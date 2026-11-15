@@ -1,0 +1,23 @@
+# secrets — never commit (vault + keys live outside git)
+*.env
+.env
+.erebus/
+vault.*
+secrets.*
+
+# data / build artifacts
+*.sqlite
+*.sqlite3
+*.db
+data/tables/
+*.iso
+*.utm
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
