@@ -44,7 +44,14 @@ class Scope:
             net = ipaddress.ip_network(target, strict=False)
         except ValueError:
             return False
-        return any(net.version == n.version and net.subnet_of(n) for n in self._nets)
+        for n in self._nets:
+            if isinstance(net, ipaddress.IPv4Network) and isinstance(n, ipaddress.IPv4Network):
+                if net.subnet_of(n):
+                    return True
+            elif isinstance(net, ipaddress.IPv6Network) and isinstance(n, ipaddress.IPv6Network):
+                if net.subnet_of(n):
+                    return True
+        return False
 
     def check(self, targets: list[str]) -> None:
         if not self.enabled:
