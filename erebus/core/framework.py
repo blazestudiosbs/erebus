@@ -12,6 +12,7 @@ from .loader import Loader
 from .module_base import Module
 from .options import OptionError
 from .scope import Scope
+from .sessions import SessionManager
 
 
 class Framework:
@@ -20,6 +21,7 @@ class Framework:
         self.store = Store(store_path)
         self.loader = Loader()
         self.scope = Scope()
+        self.sessions = SessionManager(self.store, self.events)
         self.config: dict[str, Any] = {"edition": "workstation", "tor": False}
         self._jobs: dict[int, threading.Thread] = {}
         self._jid = itertools.count(1)
