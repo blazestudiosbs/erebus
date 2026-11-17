@@ -79,6 +79,8 @@ def main() -> None:
                      help="live keeps no logs")
     rpc.add_argument("--log", default=None, metavar="PATH",
                      help="append every event to this JSONL activity log (workstation only)")
+    rpc.add_argument("--journal-dir", default=None, metavar="DIR",
+                     help="write a JSONL transcript per session here (workstation only)")
 
     args = p.parse_args()
     if args.cmd == "intel":
@@ -86,11 +88,12 @@ def main() -> None:
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve
-        fw = Framework(store_path=args.store, edition=args.edition, log_path=args.log)
+        fw = Framework(store_path=args.store, edition=args.edition, log_path=args.log,
+                       journal_dir=args.journal_dir)
         print(f"Erebus RPC → http://{args.host}:{args.port}  "
               f"(/graph, /ws/events)  edition={fw.config.get('edition')}")
-        if args.log and fw.activity_log is None:
-            print("note: the live edition keeps no logs; --log was ignored")
+        if args.edition == "live" and (args.log or args.journal_dir):
+            print("note: the live edition keeps no logs; --log/--journal-dir were ignored")
         serve(fw, host=args.host, port=args.port)
     else:
         console_main()

@@ -9,7 +9,10 @@ from __future__ import annotations
 import socket
 import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from erebus.reporting.journal import SessionJournal
 
 from . import events as ev
 from .events import Event
@@ -20,10 +23,14 @@ if TYPE_CHECKING:
 
 
 class Session:
-    """A live connection to a target. Wraps a socket; the manager owns its lifecycle."""
+    """A live connection to a target. Wraps a socket; the manager owns its lifecycle.
+
+    If a journal is attached, every send and non-empty receive is recorded to it.
+    """
 
     def __init__(self, sid: int, host: str, port: int, sock: socket.socket,
-                 kind: str = "shell", transport: str = "tcp") -> None:
+                 kind: str = "shell", transport: str = "tcp",
+                 journal: SessionJournal | None = None) -> None:
         self.id = sid
         self.host = host
         self.port = port
@@ -31,6 +38,7 @@ class Session:
         self.transport = transport
         self.opened = time.time()
         self.closed: float | None = None
+        self.journal = journal
         self._sock = sock
 
     @property
@@ -39,14 +47,19 @@ class Session:
 
     def send(self, data: bytes) -> None:
         self._sock.sendall(data)
+        if self.journal is not None:
+            self.journal.record("out", data)
 
     def recv(self, timeout: float = 2.0, bufsize: int = 4096) -> bytes:
         """Return whatever arrives within ``timeout`` seconds; b"" if nothing does."""
         self._sock.settimeout(timeout)
         try:
-            return self._sock.recv(bufsize)
+            data = self._sock.recv(bufsize)
         except socket.timeout:
             return b""
+        if self.journal is not None:
+            self.journal.record("in", data)
+        return data
 
     def close(self) -> None:
         if self.closed is None:
@@ -55,21 +68,31 @@ class Session:
                 self._sock.close()
             except OSError:
                 pass
+            if self.journal is not None:
+                self.journal.close()
 
 
 class SessionManager:
-    """Tracks live sessions, records them in the datastore, and emits SESSION_* events."""
+    """Tracks live sessions, records them in the datastore, and emits SESSION_* events.
 
-    def __init__(self, store: Store, events: EventBus) -> None:
+    With ``journal_dir`` set, each session gets a JSONL transcript in that directory.
+    """
+
+    def __init__(self, store: Store, events: EventBus,
+                 journal_dir: str | Path | None = None) -> None:
         self._store = store
         self._events = events
+        self.journal_dir = journal_dir
         self._live: dict[int, Session] = {}
         self._lock = threading.Lock()
 
     def open(self, host: str, port: int, sock: socket.socket,
              kind: str = "shell", transport: str = "tcp") -> Session:
         sid = self._store.add_session(host, kind, transport)
-        session = Session(sid, host, port, sock, kind, transport)
+        journal = None
+        if self.journal_dir is not None:
+            journal = SessionJournal(self.journal_dir, sid, host, port, kind, transport)
+        session = Session(sid, host, port, sock, kind, transport, journal)
         with self._lock:
             self._live[sid] = session
         self._events.publish(Event(ev.SESSION_OPEN, {
