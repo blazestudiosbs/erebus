@@ -102,6 +102,21 @@ class Module:
         self.framework.store.add_finding(host, self.name, title, **kw)  # type: ignore[arg-type]
         self.emit(ev.FINDING_NEW, host=host, title=title, **kw)
 
+    def add_evidence(self, host: str, data: bytes, kind: str = "file", name: str = "",
+                     note: str = "") -> str:
+        """Store ``data`` as evidence and return its ``sha256:`` reference.
+
+        Returns "" when no evidence store is configured (including the Live edition),
+        so callers can pass the result straight to ``add_finding(evidence_ref=...)``.
+        """
+        store = self.framework.evidence
+        if store is None:
+            return ""
+        ref = store.put(data)
+        self.framework.store.add_evidence(ref, host, self.name, kind, name, len(data), note)
+        self.emit(ev.EVIDENCE_ADDED, host=host, ref=ref, kind=kind, name=name, size=len(data))
+        return ref
+
     # --- lifecycle ---
     def check(self) -> CheckResult:
         return CheckResult.UNKNOWN

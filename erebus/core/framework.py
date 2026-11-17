@@ -6,6 +6,7 @@ import threading
 from typing import Any
 
 from erebus.reporting.activity_log import ActivityLog
+from erebus.reporting.evidence import EvidenceStore
 
 from . import events as ev
 from .datastore import Store
@@ -21,7 +22,8 @@ EDITIONS = ("workstation", "live")
 
 class Framework:
     def __init__(self, store_path: str = ":memory:", edition: str = "workstation",
-                 log_path: str | None = None, journal_dir: str | None = None) -> None:
+                 log_path: str | None = None, journal_dir: str | None = None,
+                 evidence_dir: str | None = None) -> None:
         if edition not in EDITIONS:
             raise ValueError(f"unknown edition {edition!r}; expected one of {EDITIONS}")
         self.events = EventBus()
@@ -32,6 +34,10 @@ class Framework:
         self.sessions = SessionManager(
             self.store, self.events,
             journal_dir=journal_dir if journal_dir and edition != "live" else None,
+        )
+        # evidence store: opt-in, and never in the Live edition (which keeps no logs)
+        self.evidence: EvidenceStore | None = (
+            EvidenceStore(evidence_dir) if evidence_dir and edition != "live" else None
         )
         self.config: dict[str, Any] = {"edition": edition, "tor": False}
         self._jobs: dict[int, threading.Thread] = {}
