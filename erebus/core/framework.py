@@ -21,14 +21,18 @@ EDITIONS = ("workstation", "live")
 
 class Framework:
     def __init__(self, store_path: str = ":memory:", edition: str = "workstation",
-                 log_path: str | None = None) -> None:
+                 log_path: str | None = None, journal_dir: str | None = None) -> None:
         if edition not in EDITIONS:
             raise ValueError(f"unknown edition {edition!r}; expected one of {EDITIONS}")
         self.events = EventBus()
         self.store = Store(store_path)
         self.loader = Loader()
         self.scope = Scope()
-        self.sessions = SessionManager(self.store, self.events)
+        # session journals: opt-in, and never in the Live edition (which keeps no logs)
+        self.sessions = SessionManager(
+            self.store, self.events,
+            journal_dir=journal_dir if journal_dir and edition != "live" else None,
+        )
         self.config: dict[str, Any] = {"edition": edition, "tor": False}
         self._jobs: dict[int, threading.Thread] = {}
         self._jid = itertools.count(1)
