@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS sessions(
   opened REAL, closed REAL);
 CREATE TABLE IF NOT EXISTS events(
   id TEXT PRIMARY KEY, type TEXT, data TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS evidence(
+  id INTEGER PRIMARY KEY, ref TEXT, host TEXT, module TEXT, kind TEXT,
+  name TEXT, size INTEGER, note TEXT, ts REAL);
 """
 
 
@@ -109,3 +112,17 @@ class Store:
 
     def sessions(self) -> list[sqlite3.Row]:
         return self.db.execute("SELECT * FROM sessions ORDER BY id").fetchall()
+
+    def add_evidence(self, ref: str, host: str, module: str, kind: str = "file",
+                     name: str = "", size: int = 0, note: str = "") -> int:
+        with self._lock:
+            cur = self.db.execute(
+                "INSERT INTO evidence(ref,host,module,kind,name,size,note,ts) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (ref, host, module, kind, name, size, note, time.time()),
+            )
+            self.db.commit()
+            return int(cur.lastrowid or 0)
+
+    def evidence(self) -> list[sqlite3.Row]:
+        return self.db.execute("SELECT * FROM evidence ORDER BY id").fetchall()

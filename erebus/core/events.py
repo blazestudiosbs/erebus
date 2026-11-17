@@ -18,6 +18,7 @@ SERVICE_FOUND = "service.found"
 FINDING_NEW = "finding.new"
 SESSION_OPEN = "session.open"
 SESSION_CLOSE = "session.close"
+EVIDENCE_ADDED = "evidence.added"
 LOG = "log"
 
 
