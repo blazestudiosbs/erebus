@@ -126,3 +126,7 @@ class Store:
 
     def evidence(self) -> list[sqlite3.Row]:
         return self.db.execute("SELECT * FROM evidence ORDER BY id").fetchall()
+
+    def event_rows(self) -> list[sqlite3.Row]:
+        """The append-only event log, oldest first."""
+        return self.db.execute("SELECT * FROM events ORDER BY ts, rowid").fetchall()
