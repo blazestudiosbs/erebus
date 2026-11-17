@@ -19,6 +19,19 @@ from .sessions import SessionManager
 
 EDITIONS = ("workstation", "live")
 
+_SECRET_WORDS = ("KEY", "TOKEN", "PASS", "SECRET", "COOKIE", "AUTH")
+
+
+def redact_options(options: dict[str, Any]) -> dict[str, Any]:
+    """Copy of ``options`` with values of secret-looking names (KEY, TOKEN, ...) masked.
+
+    Used for the MODULE_START event, which feeds the activity log and reports.
+    """
+    return {
+        k: ("***" if any(w in k.upper() for w in _SECRET_WORDS) else v)
+        for k, v in options.items()
+    }
+
 
 class Framework:
     def __init__(self, store_path: str = ":memory:", edition: str = "workstation",
@@ -82,7 +95,11 @@ class Framework:
         jid = next(self._jid)
 
         def _run() -> None:
-            self.events.publish(Event(ev.MODULE_START, {"module": module.name, "job": jid}))
+            self.events.publish(Event(ev.MODULE_START, {
+                "module": module.name, "job": jid,
+                "key": f"{module.type.value}/{module.name}",
+                "options": redact_options(module.datastore.as_dict()),
+            }))
             try:
                 module.run()
                 self.events.publish(

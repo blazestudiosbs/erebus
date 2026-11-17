@@ -51,6 +51,37 @@ def _intel(args: argparse.Namespace) -> None:
             print(_fmt(r, store, short=True))
 
 
+def _report(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from .core.framework import Framework
+    from .reporting import report as rpt
+    from .reporting.evidence import EvidenceStore
+
+    if args.edition == "live":
+        print("error: reporting is not available in the live edition")
+        return 2
+    if not Path(args.store).expanduser().is_file():
+        print(f"error: no datastore at {args.store}")
+        return 2
+    fmt = args.format or ("md" if str(args.out).lower().endswith(".md") else "html")
+    fw = Framework(store_path=str(Path(args.store).expanduser()))
+    evidence = EvidenceStore(args.evidence_dir) if args.evidence_dir else None
+    data = rpt.collect(fw.store, loader=fw.loader, evidence_store=evidence)
+    if fmt == "md":
+        content = rpt.render_markdown(data, title=args.title)
+    else:
+        content = rpt.render_html(data, title=args.title, theme=args.theme)
+    try:
+        path = rpt.write_report(args.out, content, overwrite=args.force)
+    except FileExistsError:
+        print(f"error: {args.out} exists; use --force to overwrite")
+        return 2
+    print(f"wrote {fmt} report: {path}  "
+          f"({len(data.findings)} finding(s), {len(data.hosts)} host(s))")
+    return 0
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
@@ -84,9 +115,25 @@ def main() -> None:
     rpc.add_argument("--evidence-dir", default=None, metavar="DIR",
                      help="store hashed evidence artifacts here (workstation only)")
 
+    rep = sub.add_parser("report", help="generate an HTML or Markdown report from a datastore")
+    rep.add_argument("--store", required=True, help="framework datastore file to report on")
+    rep.add_argument("--out", required=True, metavar="FILE", help="report file to write")
+    rep.add_argument("--format", choices=["html", "md"], default=None,
+                     help="default: md if --out ends in .md, else html")
+    rep.add_argument("--title", default="Engagement report")
+    rep.add_argument("--theme", choices=["dark", "light"], default="dark",
+                     help="HTML theme (printing always uses a light page)")
+    rep.add_argument("--evidence-dir", default=None, metavar="DIR",
+                     help="check evidence integrity against this store")
+    rep.add_argument("--edition", choices=["workstation", "live"], default="workstation",
+                     help="live has no reporting")
+    rep.add_argument("--force", action="store_true", help="overwrite an existing --out file")
+
     args = p.parse_args()
     if args.cmd == "intel":
         _intel(args)
+    elif args.cmd == "report":
+        raise SystemExit(_report(args))
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve
