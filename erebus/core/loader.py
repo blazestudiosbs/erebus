@@ -27,7 +27,7 @@ class Loader:
                 if (
                     issubclass(obj, Module)
                     and obj.__module__ == m.__name__
-                    and getattr(obj, "name", "")
+                    and bool(obj.name)
                 ):
                     self.registry[f"{obj.type.value}/{obj.name}"] = obj
 
