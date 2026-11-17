@@ -92,3 +92,20 @@ class Store:
 
     def findings(self) -> list[sqlite3.Row]:
         return self.db.execute("SELECT * FROM findings ORDER BY ts").fetchall()
+
+    def add_session(self, host: str, kind: str = "shell", transport: str = "tcp") -> int:
+        with self._lock:
+            cur = self.db.execute(
+                "INSERT INTO sessions(host,type,transport,opened) VALUES(?,?,?,?)",
+                (host, kind, transport, time.time()),
+            )
+            self.db.commit()
+            return int(cur.lastrowid or 0)
+
+    def close_session(self, sid: int) -> None:
+        with self._lock:
+            self.db.execute("UPDATE sessions SET closed=? WHERE id=?", (time.time(), sid))
+            self.db.commit()
+
+    def sessions(self) -> list[sqlite3.Row]:
+        return self.db.execute("SELECT * FROM sessions ORDER BY id").fetchall()
