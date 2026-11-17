@@ -5,6 +5,8 @@ import itertools
 import threading
 from typing import Any
 
+from erebus.reporting.activity_log import ActivityLog
+
 from . import events as ev
 from .datastore import Store
 from .events import Event, EventBus
@@ -14,19 +16,29 @@ from .options import OptionError
 from .scope import Scope
 from .sessions import SessionManager
 
+EDITIONS = ("workstation", "live")
+
 
 class Framework:
-    def __init__(self, store_path: str = ":memory:") -> None:
+    def __init__(self, store_path: str = ":memory:", edition: str = "workstation",
+                 log_path: str | None = None) -> None:
+        if edition not in EDITIONS:
+            raise ValueError(f"unknown edition {edition!r}; expected one of {EDITIONS}")
         self.events = EventBus()
         self.store = Store(store_path)
         self.loader = Loader()
         self.scope = Scope()
         self.sessions = SessionManager(self.store, self.events)
-        self.config: dict[str, Any] = {"edition": "workstation", "tor": False}
+        self.config: dict[str, Any] = {"edition": edition, "tor": False}
         self._jobs: dict[int, threading.Thread] = {}
         self._jid = itertools.count(1)
         # mirror every event into the store's append-only event log (activity-log backing)
         self.events.subscribe(None, self.store.log_event)
+        # JSONL activity log: opt-in, and never in the Live edition (which keeps no logs)
+        self.activity_log: ActivityLog | None = None
+        if log_path and edition != "live":
+            self.activity_log = ActivityLog(log_path)
+            self.activity_log.attach(self.events)
         self.loader.discover()
 
     def use(self, key: str) -> Module:
