@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+import sys
+from typing import Any
 
 from . import __version__
 from .console import main as console_main
@@ -27,10 +29,49 @@ def _fmt(r: sqlite3.Row, store: IntelStore, short: bool = False) -> str:
     return "\n".join(lines)
 
 
+def _vault_key(name: str) -> str | None:
+    """A key from the vault, or None if it's missing or no vault backend is installed."""
+    from .connectors.vault import VaultError, open_vault
+    try:
+        return open_vault().get(name)
+    except VaultError:
+        return None
+
+
+def _vault(args: argparse.Namespace, vault: Any = None) -> int:
+    """Manage connector API keys. Values are prompted for (hidden), never taken as arguments."""
+    import getpass
+
+    from .connectors.vault import VaultError, open_vault
+
+    if args.edition == "live":
+        print("error: the live edition keeps no secrets on disk; keys live only in memory")
+        return 2
+    v = vault if vault is not None else open_vault()
+    try:
+        if args.vault_cmd == "list":
+            names = v.names()
+            print("\n".join(names) if names else "(vault is empty)")
+        elif args.vault_cmd == "set":
+            if args.stdin:
+                value = sys.stdin.readline().rstrip("\r\n")
+            else:
+                value = getpass.getpass(f"value for {args.name} (hidden): ")
+            v.set(args.name, value)
+            print(f"stored {args.name} in the {v.backend} vault")
+        elif args.vault_cmd == "delete":
+            print(f"deleted {args.name}" if v.delete(args.name) else f"{args.name} not found")
+    except VaultError as exc:
+        print(f"error: {exc}")
+        return 2
+    return 0
+
+
 def _intel(args: argparse.Namespace) -> None:
     store = IntelStore(args.db or default_db_path())
     if args.intel_cmd == "update":
-        counts = intel_ingest.update(store, keyword=args.keyword, api_key=args.api_key)
+        api_key = args.api_key or _vault_key("nvd")  # NVD key: flag, else the vault
+        counts = intel_ingest.update(store, keyword=args.keyword, api_key=api_key)
         errors = counts.get("errors") or {}
         print(f"nvd={counts['nvd']} kev={counts['kev']} epss={counts['epss']}  "
               f"total={store.count()}")
@@ -93,7 +134,8 @@ def main() -> None:
     isub = intel.add_subparsers(dest="intel_cmd", required=True)
     up = isub.add_parser("update", help="pull NVD + KEV + EPSS")
     up.add_argument("--keyword", default=None, help="NVD keyword filter")
-    up.add_argument("--api-key", default=None, help="NVD API key (higher rate limit)")
+    up.add_argument("--api-key", default=None,
+                    help="NVD API key (higher rate limit); default: 'nvd' from the vault")
     lk = isub.add_parser("lookup", help="show a CVE")
     lk.add_argument("cve")
     co = isub.add_parser("correlate", help="find CVEs for a product/version")
@@ -129,9 +171,22 @@ def main() -> None:
                      help="live has no reporting")
     rep.add_argument("--force", action="store_true", help="overwrite an existing --out file")
 
+    vlt = sub.add_parser("vault", help="manage connector API keys (OS keychain)")
+    vlt.add_argument("--edition", choices=["workstation", "live"], default="workstation")
+    vsub = vlt.add_subparsers(dest="vault_cmd", required=True)
+    vsub.add_parser("list", help="list stored key names (never values)")
+    vset = vsub.add_parser("set", help="store a key; the value is prompted for, hidden")
+    vset.add_argument("name", help="e.g. shodan, nvd")
+    vset.add_argument("--stdin", action="store_true",
+                      help="read the value from stdin instead of prompting")
+    vdel = vsub.add_parser("delete", help="remove a key")
+    vdel.add_argument("name")
+
     args = p.parse_args()
     if args.cmd == "intel":
         _intel(args)
+    elif args.cmd == "vault":
+        raise SystemExit(_vault(args))
     elif args.cmd == "report":
         raise SystemExit(_report(args))
     elif args.cmd == "rpc":
