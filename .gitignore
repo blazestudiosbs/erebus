@@ -3,6 +3,7 @@
 .env
 .erebus/
 vault.*
+!erebus/connectors/vault.py
 secrets.*
 
 # data / build artifacts
