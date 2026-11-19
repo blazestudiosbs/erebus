@@ -36,7 +36,7 @@ class ReverseTcpHandler(Auxiliary):
 
     def run(self) -> None:
         lhost = str(self.opt("LHOST"))
-        lport = int(self.opt("LPORT"))  # type: ignore[arg-type]
+        lport = int(self.opt("LPORT"))  # type: ignore[call-overload]
         timeout = float(self.opt("TIMEOUT"))  # type: ignore[arg-type]
 
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

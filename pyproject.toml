@@ -17,6 +17,7 @@ dependencies = []
 dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.8", "httpx", "fastapi", "uvicorn[standard]"]
 rpc = ["fastapi", "uvicorn[standard]"]
 intel = ["requests"]
+connectors = ["keyring>=24"]
 
 [project.scripts]
 erebus = "erebus.cli:main"

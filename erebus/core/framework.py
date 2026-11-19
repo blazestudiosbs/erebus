@@ -5,6 +5,8 @@ import itertools
 import threading
 from typing import Any
 
+from erebus.connectors.base import Transport
+from erebus.connectors.vault import Vault, open_vault
 from erebus.reporting.activity_log import ActivityLog
 from erebus.reporting.evidence import EvidenceStore
 
@@ -36,7 +38,8 @@ def redact_options(options: dict[str, Any]) -> dict[str, Any]:
 class Framework:
     def __init__(self, store_path: str = ":memory:", edition: str = "workstation",
                  log_path: str | None = None, journal_dir: str | None = None,
-                 evidence_dir: str | None = None) -> None:
+                 evidence_dir: str | None = None, vault: Vault | None = None,
+                 offline: bool = False) -> None:
         if edition not in EDITIONS:
             raise ValueError(f"unknown edition {edition!r}; expected one of {EDITIONS}")
         self.events = EventBus()
@@ -52,7 +55,11 @@ class Framework:
         self.evidence: EvidenceStore | None = (
             EvidenceStore(evidence_dir) if evidence_dir and edition != "live" else None
         )
-        self.config: dict[str, Any] = {"edition": edition, "tor": False}
+        self.config: dict[str, Any] = {"edition": edition, "tor": False, "offline": offline}
+        # connector API keys: OS keychain on Workstation, memory-only on Live
+        self.vault: Vault = vault if vault is not None else open_vault(edition)
+        # HTTP transport for connectors; None = stdlib urllib. Tests inject a fake.
+        self.http_transport: Transport | None = None
         self._jobs: dict[int, threading.Thread] = {}
         self._jid = itertools.count(1)
         # mirror every event into the store's append-only event log (activity-log backing)
