@@ -68,7 +68,7 @@ class PortScan(Auxiliary):
     def run(self) -> None:
         hosts = expand_hosts(str(self.opt("RHOSTS")))
         ports = parse_ports(str(self.opt("PORTS")))
-        threads = int(self.opt("THREADS"))  # type: ignore[arg-type]
+        threads = int(self.opt("THREADS"))  # type: ignore[call-overload]
         timeout = float(self.opt("TIMEOUT"))  # type: ignore[arg-type]
         total = len(hosts) * len(ports)
         done = 0
