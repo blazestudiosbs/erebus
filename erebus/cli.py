@@ -105,16 +105,29 @@ def _report(args: argparse.Namespace) -> int:
     if not Path(args.store).expanduser().is_file():
         print(f"error: no datastore at {args.store}")
         return 2
-    fmt = args.format or ("md" if str(args.out).lower().endswith(".md") else "html")
+    out_l = str(args.out).lower()
+    if args.format:
+        fmt = args.format
+    elif out_l.endswith(".md"):
+        fmt = "md"
+    elif out_l.endswith(".pdf"):
+        fmt = "pdf"
+    else:
+        fmt = "html"
     fw = Framework(store_path=str(Path(args.store).expanduser()))
     evidence = EvidenceStore(args.evidence_dir) if args.evidence_dir else None
     data = rpt.collect(fw.store, loader=fw.loader, evidence_store=evidence)
-    if fmt == "md":
-        content = rpt.render_markdown(data, title=args.title)
-    else:
-        content = rpt.render_html(data, title=args.title, theme=args.theme)
     try:
-        path = rpt.write_report(args.out, content, overwrite=args.force)
+        if fmt == "pdf":
+            path = rpt.write_report_bytes(
+                args.out, rpt.render_pdf(data, title=args.title), overwrite=args.force)
+        else:
+            content = (rpt.render_markdown(data, title=args.title) if fmt == "md"
+                       else rpt.render_html(data, title=args.title, theme=args.theme))
+            path = rpt.write_report(args.out, content, overwrite=args.force)
+    except RuntimeError as exc:  # optional PDF dependency missing
+        print(f"error: {exc}")
+        return 2
     except FileExistsError:
         print(f"error: {args.out} exists; use --force to overwrite")
         return 2
@@ -160,7 +173,7 @@ def main() -> None:
     rep = sub.add_parser("report", help="generate an HTML or Markdown report from a datastore")
     rep.add_argument("--store", required=True, help="framework datastore file to report on")
     rep.add_argument("--out", required=True, metavar="FILE", help="report file to write")
-    rep.add_argument("--format", choices=["html", "md"], default=None,
+    rep.add_argument("--format", choices=["html", "md", "pdf"], default=None,
                      help="default: md if --out ends in .md, else html")
     rep.add_argument("--title", default="Engagement report")
     rep.add_argument("--theme", choices=["dark", "light"], default="dark",
