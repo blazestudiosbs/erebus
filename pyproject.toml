@@ -14,10 +14,11 @@ keywords = ["security", "pentest", "research", "framework"]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.8", "httpx", "fastapi", "uvicorn[standard]"]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.8", "httpx", "fastapi", "uvicorn[standard]", "fpdf2>=2.7"]
 rpc = ["fastapi", "uvicorn[standard]"]
 intel = ["requests"]
 connectors = ["keyring>=24"]
+report = ["fpdf2>=2.7"]
 
 [project.scripts]
 erebus = "erebus.cli:main"
