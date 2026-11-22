@@ -1,47 +1,64 @@
-"""FastAPI server exposing live framework state to the 3D dashboard.
+"""FastAPI server exposing framework state to the 3D dashboard and a control API.
 
-Endpoints:
-    GET  /health        → {"ok": true, "edition": ...}
-    GET  /graph         → {nodes, links, meta}  (live framework state)
-    GET  /events        → Server-Sent Events stream (fallback for /ws)
-    WS   /ws/events     → push stream of framework events as JSON
-
-This layer is optional. FastAPI is imported at module scope (guarded) so that
-parameter annotations resolve correctly under ``from __future__ import
-annotations`` — but importing this module without the ``rpc`` extra installed
-raises a clear error only when you try to build the app, not on import.
+Read endpoints (``/graph``, ``/modules``, ``/hosts``, ``/services``,
+``/findings``, ``/sessions``) are same-origin only: CORS is restricted (no
+wildcard) so a drive-by page cannot read them cross-origin. The event streams
+(``WS /ws/events``, ``GET /events``) bypass CORS, so they require the bearer
+token; ``POST /jobs`` (which starts a module) requires it too and runs through
+``Framework.run()`` — i.e. the scope gate. The token is generated at startup
+unless supplied, printed by the CLI, and injected into the served dashboard so
+the same-origin UI can use it.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 try:
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+    from fastapi import (
+        Depends,
+        FastAPI,
+        Header,
+        HTTPException,
+        Request,
+        WebSocket,
+        WebSocketDisconnect,
+    )
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import HTMLResponse, StreamingResponse
     _FASTAPI_OK = True
 except ModuleNotFoundError:  # fastapi is an optional extra
-    FastAPI = WebSocket = WebSocketDisconnect = object  # type: ignore[assignment,misc]
-    CORSMiddleware = HTMLResponse = StreamingResponse = None  # type: ignore[assignment]
+    Depends = FastAPI = Header = HTTPException = Request = object  # type: ignore[assignment,misc]
+    WebSocket = WebSocketDisconnect = object  # type: ignore[assignment,misc]
+    CORSMiddleware = HTMLResponse = StreamingResponse = None  # type: ignore[assignment,misc]
     _FASTAPI_OK = False
+
+from erebus.core.options import OptionError
+from erebus.core.scope import ScopeError
 
 from .events import EventBridge
 from .graph import build_graph
 
 _DASHBOARD = Path(__file__).with_name("dashboard.html")
-
 _RPC_HINT = 'The RPC server needs FastAPI + uvicorn. Install with: pip install -e ".[rpc]"'
 
 
-def create_app(framework: Any) -> Any:
-    """Build the FastAPI app bound to a live framework instance."""
+def create_app(framework: Any, token: str | None = None,
+               cors_origins: list[str] | None = None) -> Any:
+    """Build the FastAPI app bound to a live framework instance.
+
+    ``token`` guards the write endpoint and the event streams; one is generated
+    if not supplied and exposed as ``app.state.token``. ``cors_origins`` is the
+    allowlist for cross-origin reads (empty = same-origin only).
+    """
     if not _FASTAPI_OK:
         raise RuntimeError(_RPC_HINT)
 
+    token = token or secrets.token_urlsafe(24)
     state: dict[str, Any] = {"bridge": None, "unsub": None}
 
     @asynccontextmanager
@@ -57,19 +74,37 @@ def create_app(framework: Any) -> Any:
                 state["unsub"]()
 
     app = FastAPI(title="Erebus RPC", version="0.1.0", lifespan=lifespan)
-    # The dashboard artifact loads from a different origin; allow it to read.
+    app.state.token = token
     app.add_middleware(
-        CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+        CORSMiddleware, allow_origins=cors_origins or [],
+        allow_methods=["*"], allow_headers=["*"],
     )
+
+    def require_token(authorization: str | None = Header(default=None)) -> None:
+        expected = f"Bearer {token}"
+        if not authorization or not secrets.compare_digest(authorization, expected):
+            raise HTTPException(status_code=401, detail="missing or invalid bearer token")
+
+    def _stream_token_ok(conn: Any) -> bool:  # WebSocket or Request; both have query_params
+        return secrets.compare_digest(conn.query_params.get("token", ""), token)
 
     def _graph() -> dict[str, Any]:
         return build_graph(framework.loader, framework.store, framework.config)
 
+    def _rows(rows: Any) -> list[dict[str, Any]]:
+        return [dict(r) for r in rows]
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard() -> Any:
-        if _DASHBOARD.exists():
-            return HTMLResponse(_DASHBOARD.read_text(encoding="utf-8"))
-        return HTMLResponse("<h1>Erebus RPC</h1><p>dashboard.html not found; API at /graph</p>")
+        if not _DASHBOARD.exists():
+            return HTMLResponse("<h1>Erebus RPC</h1><p>dashboard.html not found; API at /graph</p>")
+        html = _DASHBOARD.read_text(encoding="utf-8")
+        inject = f"<script>window.EREBUS_TOKEN={json.dumps(token)};</script>"
+        if "</head>" in html:
+            html = html.replace("</head>", inject + "</head>", 1)
+        else:
+            html = inject + html
+        return HTMLResponse(html)
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -83,12 +118,67 @@ def create_app(framework: Any) -> Any:
     async def graph() -> dict[str, Any]:
         return _graph()
 
+    @app.get("/modules")
+    async def modules() -> dict[str, Any]:
+        out = []
+        for key, cls in framework.loader.all():
+            mtype = getattr(cls, "type", None)
+            out.append({
+                "key": key,
+                "name": getattr(cls, "name", key),
+                "type": getattr(mtype, "value", str(mtype or "auxiliary")),
+                "rank": getattr(getattr(cls, "rank", None), "name", "NORMAL"),
+                "attack": list(getattr(cls, "attack", []) or []),
+                "description": getattr(cls, "description", "") or "",
+            })
+        return {"modules": out}
+
+    @app.get("/hosts")
+    async def hosts() -> dict[str, Any]:
+        return {"hosts": _rows(framework.store.hosts())}
+
+    @app.get("/services")
+    async def services() -> dict[str, Any]:
+        return {"services": _rows(framework.store.services())}
+
+    @app.get("/findings")
+    async def findings() -> dict[str, Any]:
+        return {"findings": _rows(framework.store.findings())}
+
+    @app.get("/sessions")
+    async def sessions() -> dict[str, Any]:
+        return {"sessions": _rows(framework.store.sessions())}
+
+    @app.post("/jobs", dependencies=[Depends(require_token)])
+    async def start_job(payload: dict[str, Any]) -> dict[str, Any]:
+        key = str(payload.get("module", "")).strip()
+        options = payload.get("options") or {}
+        if not key:
+            raise HTTPException(status_code=400, detail="missing 'module'")
+        if not isinstance(options, dict):
+            raise HTTPException(status_code=400, detail="'options' must be an object")
+        try:
+            module = framework.use(key)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"unknown module: {key}") from None
+        try:
+            for k, v in options.items():
+                module.set_option(str(k), str(v))
+            jid = framework.run(module, background=True)
+        except OptionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        except ScopeError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from None
+        return {"job": jid, "module": module.name}
+
     @app.websocket("/ws/events")
     async def ws_events(ws: WebSocket) -> None:
+        if not _stream_token_ok(ws):
+            await ws.close(code=1008)
+            return
         await ws.accept()
         bridge: EventBridge = state["bridge"]
         q = bridge.add_client()
-        # prime the client with the current graph so it can draw immediately
         await ws.send_text(json.dumps({"type": "graph.snapshot", "data": _graph()}))
         try:
             while True:
@@ -99,8 +189,9 @@ def create_app(framework: Any) -> Any:
             bridge.remove_client(q)
 
     @app.get("/events")
-    async def sse_events() -> Any:
-        """SSE fallback for clients that can't open a WebSocket."""
+    async def sse_events(request: Request) -> Any:
+        if not _stream_token_ok(request):
+            raise HTTPException(status_code=401, detail="missing or invalid token")
         bridge: EventBridge = state["bridge"]
         q = bridge.add_client()
 
@@ -117,22 +208,26 @@ def create_app(framework: Any) -> Any:
     return app
 
 
-def serve(framework: Any, host: str = "127.0.0.1", port: int = 8777) -> None:
+def serve(framework: Any, host: str = "127.0.0.1", port: int = 8777,
+          token: str | None = None, cors_origins: list[str] | None = None) -> None:
     """Boot the RPC server (blocking). Requires the ``rpc`` extra."""
     try:
         import uvicorn
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise RuntimeError(_RPC_HINT) from exc
-    uvicorn.run(create_app(framework), host=host, port=port, log_level="info")
+    app = create_app(framework, token=token, cors_origins=cors_origins)
+    print(f"RPC token: {app.state.token}")
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
-def serve_in_thread(framework: Any, host: str = "127.0.0.1", port: int = 8777) -> Any:
+def serve_in_thread(framework: Any, host: str = "127.0.0.1", port: int = 8777,
+                    token: str | None = None, cors_origins: list[str] | None = None) -> Any:
     """Boot the RPC server in a background daemon thread sharing ``framework``.
 
-    Returns ``(server, thread)``. Unlike :func:`serve`, this does not block: the
-    caller (e.g. the interactive console) keeps running in the foreground while
-    the dashboard reads the *same* framework — so a run typed in the console
-    streams live over ``/ws/events``. Requires the ``rpc`` extra.
+    Returns ``(server, thread, token)``. Unlike :func:`serve`, this does not
+    block: the caller (e.g. the interactive console) keeps running while the
+    dashboard reads the *same* framework, so a run streams live over
+    ``/ws/events``. Requires the ``rpc`` extra.
     """
     if not _FASTAPI_OK:
         raise RuntimeError(_RPC_HINT)
@@ -140,12 +235,12 @@ def serve_in_thread(framework: Any, host: str = "127.0.0.1", port: int = 8777) -
 
     try:
         import uvicorn
-    except ModuleNotFoundError as exc:  # pragma: no cover - exercised only without the extra
+    except ModuleNotFoundError as exc:  # pragma: no cover
         raise RuntimeError(_RPC_HINT) from exc
 
-    # uvicorn skips signal handlers off the main thread, so running here is safe.
-    config = uvicorn.Config(create_app(framework), host=host, port=port, log_level="warning")
+    app = create_app(framework, token=token, cors_origins=cors_origins)
+    config = uvicorn.Config(app, host=host, port=port, log_level="warning")
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, name="erebus-rpc", daemon=True)
     thread.start()
-    return server, thread
+    return server, thread, app.state.token

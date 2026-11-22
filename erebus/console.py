@@ -226,6 +226,8 @@ def add_console_args(p: argparse.ArgumentParser) -> None:
                    help="write a JSONL transcript per session here (workstation only)")
     p.add_argument("--evidence-dir", default=None, metavar="DIR",
                    help="store hashed evidence artifacts here (workstation only)")
+    p.add_argument("--token", default=None, metavar="TOKEN",
+                   help="RPC bearer token for --serve (generated if unset)")
     p.add_argument("--serve", action="store_true",
                    help="also serve the live 3D dashboard, sharing THIS console's state")
     p.add_argument("--host", default="127.0.0.1", help="dashboard bind host (with --serve)")
@@ -242,14 +244,16 @@ def build_framework(store: str = ":memory:", edition: str = "workstation",
 
 def launch(store: str = ":memory:", edition: str = "workstation", log: str | None = None,
            journal_dir: str | None = None, evidence_dir: str | None = None,
-           serve: bool = False, host: str = "127.0.0.1", port: int = 8777) -> None:
+           serve: bool = False, host: str = "127.0.0.1", port: int = 8777,
+           token: str | None = None) -> None:
     """Build the framework, optionally co-host the dashboard, and run the REPL."""
     fw = build_framework(store, edition, log, journal_dir, evidence_dir)
     server = None
     if serve:
         from .rpc.server import serve_in_thread
         try:
-            server, _ = serve_in_thread(fw, host=host, port=port)
+            server, _, tok = serve_in_thread(fw, host=host, port=port, token=token)
+            print(col(f"  RPC token: {tok}", "dim"))
             print(col(f"◆ dashboard → http://{host}:{port}  "
                       f"(live; shares this console)", "accent"))
         except RuntimeError as exc:
@@ -269,4 +273,5 @@ def main(argv: list[str] | None = None) -> None:
     add_console_args(p)
     ns = p.parse_args(argv)
     launch(store=ns.store, edition=ns.edition, log=ns.log, journal_dir=ns.journal_dir,
-           evidence_dir=ns.evidence_dir, serve=ns.serve, host=ns.host, port=ns.port)
+           evidence_dir=ns.evidence_dir, serve=ns.serve, host=ns.host, port=ns.port,
+           token=ns.token)
