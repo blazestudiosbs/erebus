@@ -57,7 +57,7 @@ esac
 if [ ! -d "$VENV" ]; then log "creating venv at $VENV"; python3 -m venv "$VENV"; fi
 "$VENV/bin/python" -m pip install --upgrade pip >/dev/null 2>&1 || warn "pip upgrade failed"
 log "installing Erebus + all runtime extras (editable)"
-"$VENV/bin/python" -m pip install -e "$REPO_ROOT.[all]" || die "pip install of Erebus failed"
+( cd "$REPO_ROOT" && "$VENV/bin/python" -m pip install -e ".[all]" ) || die "pip install of Erebus failed"
 log "Erebus installed: $("$VENV/bin/erebus" --version 2>/dev/null || echo erebus)"
 
 # ---- 3. external tools the modules call -----------------------------------
