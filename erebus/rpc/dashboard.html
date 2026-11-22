@@ -37,19 +37,7 @@
   .conn .lbl{ color:#9a92b8; }
   .conn button{ background:#1a1030; color:var(--accent); border:1px solid #2a2340; border-radius:999px; padding:3px 10px; font-size:11px; cursor:pointer; }
   .hint{ position:absolute; top:16px; right:16px; z-index:3; color:#4d4a60; font-size:12px; font-family:ui-monospace,monospace; }
-  .ask{ position:absolute; left:16px; right:16px; bottom:16px; z-index:3; display:flex; gap:9px; align-items:center; }
-  .ask .box{ flex:1; background:rgba(16,12,28,0.82); border:1px solid #241a3a; border-radius:999px; padding:10px 16px; color:#6e6a85; font-size:14px; }
-  .ask .cp{ background:#1a1030; color:var(--accent); border-radius:999px; padding:8px 14px; font-size:13px; white-space:nowrap; }
-  .ask .cp{ cursor:pointer; }
-  input.box{ outline:none; color:#e6e1ff; }
-  input.box::placeholder{ color:#6e6a85; }
-  .ask-answer{ position:absolute; left:16px; right:16px; bottom:62px; z-index:4; max-height:44vh; overflow:auto; background:rgba(14,11,24,0.97); border:1px solid #2a2340; border-radius:12px; padding:14px 16px; font-size:13px; line-height:1.6; color:#cfc6ef; white-space:pre-wrap; box-shadow:0 10px 40px rgba(0,0,0,0.55); }
-  .ask-answer .ah{ display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
-  .ask-answer .ax{ margin-left:auto; cursor:pointer; color:#6e6a85; }
-  .ask-answer .ax:hover{ color:#cfc6ef; }
   .cpimg{ width:20px; height:20px; border-radius:5px; margin-right:7px; image-rendering:pixelated; flex:0 0 auto; }
-  .ask .cp{ display:inline-flex; align-items:center; }
-  .ask-answer .ah .cpimg{ width:18px; height:18px; margin-right:4px; border-radius:4px; }
   .rail{ border-left:1px solid #1b1630; padding:14px; display:flex; flex-direction:column; gap:12px; overflow:hidden; }
   .tiles{ display:grid; grid-template-columns:1fr 1fr; gap:9px; }
   .tile{ background:rgba(20,16,34,0.6); border:1px solid #1b1630; border-radius:10px; padding:9px 11px; }
@@ -137,6 +125,29 @@
   .term-in:focus-within{ border-color:var(--accent); }
   .term-in .pr{ color:var(--accent); font-family:ui-monospace,monospace; font-size:13px; white-space:nowrap; }
   .term-in input{ flex:1; background:transparent; border:0; outline:none; color:#e6e1ff; font-family:ui-monospace,monospace; font-size:13px; padding:9px 0; }
+  /* floating copilot (persistent across all tabs) */
+  .copilot-fab{ position:fixed; right:20px; bottom:20px; z-index:50; width:52px; height:52px; border-radius:50%; cursor:pointer; background:#120c1e; border:1px solid #3a2d55; box-shadow:0 6px 24px rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; transition:transform .12s, border-color .12s; }
+  .copilot-fab:hover{ transform:translateY(-2px); border-color:var(--accent); }
+  .copilot-fab img{ width:40px; height:40px; border-radius:50%; image-rendering:pixelated; }
+  .copilot-panel{ position:fixed; right:20px; bottom:84px; z-index:50; width:360px; max-width:calc(100vw - 40px); height:460px; max-height:calc(100vh - 120px); display:flex; flex-direction:column; background:rgba(14,11,24,0.98); border:1px solid #2a2340; border-radius:14px; box-shadow:0 16px 50px rgba(0,0,0,0.6); overflow:hidden; }
+  .cop-head{ display:flex; align-items:center; gap:8px; padding:11px 14px; border-bottom:1px solid #1b1630; font-size:13px; color:#e6e1ff; }
+  .cop-head .cpimg{ width:22px; height:22px; border-radius:6px; image-rendering:pixelated; }
+  .cop-head .cop-x{ margin-left:auto; cursor:pointer; color:#6e6a85; font-size:19px; line-height:1; }
+  .cop-head .cop-x:hover{ color:#e6e1ff; }
+  .cop-body{ flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .cop-hint{ color:#6e6a85; font-size:12.5px; line-height:1.5; }
+  .cop-msg{ font-size:12.5px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+  .cop-msg.you{ align-self:flex-end; background:#1a1030; border:1px solid #3a2d55; color:#e6e1ff; padding:8px 11px; border-radius:10px 10px 2px 10px; max-width:85%; }
+  .cop-msg.bot{ display:flex; gap:8px; color:#cfc6ef; }
+  .cop-msg.bot .cpimg{ width:20px; height:20px; border-radius:5px; image-rendering:pixelated; flex:0 0 auto; }
+  .cop-msg.err{ color:#ff9d2e; font-family:ui-monospace,monospace; }
+  .cop-prov{ color:#6e6a85; font-size:10.5px; margin-top:4px; text-transform:uppercase; letter-spacing:.3px; }
+  .cop-foot{ display:flex; gap:7px; padding:10px; border-top:1px solid #1b1630; }
+  .cop-foot input{ flex:1; background:rgba(16,12,28,0.9); border:1px solid #2a2340; border-radius:9px; padding:9px 12px; color:#e6e1ff; font-size:13px; outline:none; }
+  .cop-foot input:focus{ border-color:var(--accent); }
+  .cop-foot button{ background:#1a1030; color:var(--accent); border:1px solid #3a2d55; border-radius:9px; padding:0 13px; font-size:12.5px; cursor:pointer; white-space:nowrap; }
+  .cop-foot button.sec{ color:#9a92b8; }
+  .cop-foot button:hover{ background:#241640; }
 </style>
 </head>
 <body>
@@ -158,8 +169,6 @@
     <div class="toggle"><button id="m-graph" class="on">graph</button><button id="m-tree">tree</button></div>
     <div class="conn"><span class="dot off" id="rpcdot"></span><span class="lbl" id="rpclbl">offline &middot; sample data</span><button id="rpcbtn">reconnect</button></div>
     <div class="hint">drag &middot; scroll &middot; click</div>
-    <div class="ask"><input id="ask-box" class="box" placeholder="Ask Erebus — or leave blank for next-step suggestions" autocomplete="off" spellcheck="false"/><span class="cp" id="ask-send"><img src="copilot.png" class="cpimg" alt="copilot"/>copilot</span></div>
-    <div class="ask-answer" id="ask-answer" style="display:none"></div>
     <div class="view-targets" id="targetsview" style="display:none">
       <div class="tgt-wrap">
         <h2>Targets &amp; recon</h2>
@@ -262,6 +271,12 @@
     </div>
   </aside>
 </div>
+<div class="copilot-fab" id="cop-fab" title="Ask Erebus copilot"><img src="copilot.png" alt="copilot"/></div>
+<div class="copilot-panel" id="cop-panel" style="display:none">
+  <div class="cop-head"><img src="copilot.png" class="cpimg" alt=""/><span>Erebus copilot</span><span class="cop-x" id="cop-close">&times;</span></div>
+  <div class="cop-body" id="cop-body"></div>
+  <div class="cop-foot"><input id="cop-input" placeholder="Ask Erebus&hellip;" autocomplete="off" spellcheck="false"/><button id="cop-send">Ask</button><button id="cop-suggest" class="sec">Suggest</button></div>
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
 <script>
 (function(){
@@ -283,8 +298,7 @@
     var flow=(name==='Flow');
     var g=document.getElementById('graph'); if(g) g.style.display=flow?'':'none';
     for(var k in PANELS){ var el=document.getElementById(PANELS[k]); if(el) el.style.display=(name===k)?'block':'none'; }
-    ['toggle','ask','hint'].forEach(function(c){ var el=document.querySelector('.'+c); if(el) el.style.display=flow?'':'none'; });
-    if(!flow){ var aa=document.getElementById('ask-answer'); if(aa) aa.style.display='none'; }
+    ['toggle','hint'].forEach(function(c){ var el=document.querySelector('.'+c); if(el) el.style.display=flow?'':'none'; });
     if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
     if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
     else if(name==='Modules'){ loadModules(); }
@@ -484,31 +498,41 @@
     if(t.indexOf('scope')>=0){ loadScope(); }
     if(curView==='Findings' && (t.indexOf('finding')>=0||t.indexOf('module')>=0)){ loadFindings(); } };
 
-  // ---- copilot (Ask Erebus): advisory helper grounded in engagement state ----
+  // ---- copilot (floating widget, persistent across all tabs) ---------------
   function escHtml(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function showAnswer(kind, text, provider){
-    var box=document.getElementById('ask-answer'); if(!box) return;
-    var color=kind==='error'?'#ff9d2e':(kind==='think'?'#22e0ff':'#5dffa5');
-    var label=kind==='ok'?('copilot'+(provider?(' · '+provider):'')):'copilot';
-    box.innerHTML='<div class="ah"><img src="copilot.png" class="cpimg" alt=""/><span style="color:'+color+'">'+label+'</span><span class="ax" id="ask-close">close</span></div>'+escHtml(text);
-    box.style.display='block';
-    var c=document.getElementById('ask-close'); if(c) c.onclick=function(){ box.style.display='none'; };
+  var copTx=[];
+  function copRender(){ var b=document.getElementById('cop-body'); if(!b) return;
+    if(!copTx.length){ b.innerHTML='<div class="cop-hint">Ask about the current hosts, services and findings &mdash; or tap Suggest for next steps. Advisory only; the copilot never runs anything itself.</div>'; return; }
+    b.innerHTML=copTx.map(function(m){
+      if(m.role==='you') return '<div class="cop-msg you">'+escHtml(m.text)+'</div>';
+      if(m.role==='err') return '<div class="cop-msg err">'+escHtml(m.text)+'</div>';
+      return '<div class="cop-msg bot"><img src="copilot.png" class="cpimg" alt=""/><div><div>'+escHtml(m.text)+'</div>'+(m.provider?'<div class="cop-prov">'+escHtml(m.provider)+'</div>':'')+'</div></div>';
+    }).join('');
+    b.scrollTop=b.scrollHeight;
   }
-  function askCopilot(){
-    var inp=document.getElementById('ask-box'), btn=document.getElementById('ask-send');
-    var q=((inp&&inp.value)||'').trim();
-    if(!hasTok()){ showAnswer('error','Connect to a live server first (run  erebus console --serve  and open the printed URL).'); return; }
-    showAnswer('think', q?('thinking about: '+q):'thinking about your next steps…');
-    if(btn) btn.style.opacity=0.5;
-    apiPost('copilot',{question:q}).then(function(res){ if(btn) btn.style.opacity=1;
-      if(res.ok){ showAnswer('ok', res.j.answer||'(no answer)', res.j.provider); if(inp) inp.value=''; }
+  function copOpen(show){ var pn=document.getElementById('cop-panel'); if(!pn) return;
+    pn.style.display=show?'flex':'none'; if(show){ copRender(); var inp=document.getElementById('cop-input'); if(inp) inp.focus(); } }
+  function askCopilot(q){
+    var inp=document.getElementById('cop-input');
+    var question=(typeof q==='string')?q:((inp&&inp.value)||'').trim();
+    if(!hasTok()){ copTx.push({role:'err',text:'Connect to a live server first (run  erebus console --serve  and open the printed URL).'}); copRender(); return; }
+    copTx.push({role:'you', text:question||'suggest next steps'});
+    copTx.push({role:'bot', text:'thinking\u2026'}); var at=copTx.length-1; copRender();
+    if(inp) inp.value='';
+    apiPost('copilot',{question:question}).then(function(res){
+      if(res.ok){ copTx[at]={role:'bot', text:res.j.answer||'(no answer)', provider:res.j.provider}; }
       else { var d=(res.j&&res.j.detail)||('HTTP '+res.status);
-        var hint=(res.status===503)?'\n\nSet an LLM key first:  erebus vault set anthropic   (or openai), then retry.':'';
-        showAnswer('error', d+hint); } })
-    .catch(function(e){ if(btn) btn.style.opacity=1; showAnswer('error','request failed: '+e); });
+        var hint=(res.status===503)?'  Set an LLM key:  erebus vault set anthropic  (or openai), then retry.':'';
+        copTx[at]={role:'err', text:d+hint}; }
+      copRender();
+    }).catch(function(e){ copTx[at]={role:'err', text:'request failed: '+e}; copRender(); });
   }
-  (function(){ var b=document.getElementById('ask-send'), i=document.getElementById('ask-box');
-    if(b) b.onclick=askCopilot;
+  (function(){ var fab=document.getElementById('cop-fab'), x=document.getElementById('cop-close'),
+      send=document.getElementById('cop-send'), sug=document.getElementById('cop-suggest'), i=document.getElementById('cop-input');
+    if(fab) fab.onclick=function(){ var pn=document.getElementById('cop-panel'); copOpen(!pn||pn.style.display==='none'); };
+    if(x) x.onclick=function(){ copOpen(false); };
+    if(send) send.onclick=function(){ askCopilot(); };
+    if(sug) sug.onclick=function(){ askCopilot(''); };
     if(i) i.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); askCopilot(); } }); })();
 
   // ---- web console (Terminal tab): Erebus commands only, no OS shell --------
