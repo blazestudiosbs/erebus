@@ -1,0 +1,3 @@
+Erebus installs to /opt/erebus in the built image.
+The live-build includes.chroot hook (to be added) clones/installs the framework here and
+wires the `erebus` / `ereconsole` entry points onto PATH. See distro/README.md.

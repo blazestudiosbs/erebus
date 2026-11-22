@@ -1,0 +1,33 @@
+# Erebus curated tool set (live-build: config/package-lists/erebus.list.chroot).
+# Keep this minimal — add tools by name, never pull giant metapackages. (Research doc §7.)
+
+# base + a tiny GUI (omit xorg/openbox for a CLI-only image)
+kali-linux-core
+xorg
+openbox
+python3
+python3-pip
+git
+
+# recon / scanning
+nmap
+# nuclei, httpx, naabu: installed via pdtm on first boot (not in Debian/Kali repos pinned)
+
+# wireless fleet (§5) — needs the right USB adapters at runtime
+aircrack-ng
+hcxtools
+hcxdumptool
+reaver
+bettercap
+bluez
+libnfc-bin
+mfoc
+# proxmark3   # uncomment if your image targets RFID research
+
+# credentials / cracking (§6)
+hashcat
+john
+# rainbowcrack / tables fetched on first boot, not baked in
+
+# exploit data
+exploitdb
