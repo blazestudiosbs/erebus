@@ -234,6 +234,10 @@ def main() -> None:
                      help="write a JSONL transcript per session here (workstation only)")
     rpc.add_argument("--evidence-dir", default=None, metavar="DIR",
                      help="store hashed evidence artifacts here (workstation only)")
+    rpc.add_argument("--scope", default=None, metavar="FILE",
+                     help="preload scope guardrails from a file (one target per line)")
+    rpc.add_argument("--lab", action="store_true",
+                     help="LAB MODE: disable the scope gate (allow-all) — isolated lab only")
     rpc.add_argument("--token", default=None, metavar="TOKEN",
                      help="bearer token for the control API (generated if unset)")
     rpc.add_argument("--cors-origin", action="append", default=None,
@@ -315,6 +319,12 @@ def main() -> None:
         _url = f"http://{args.host}:{args.port}"
         print(f"Erebus RPC → {_link(_url)}  "
               f"(/graph, /ws/events)  edition={fw.config.get('edition')}")
+        if args.scope:
+            fw.scope.load(args.scope)
+            print(f"scope: loaded {len(fw.scope.show())} rule(s) from {args.scope}")
+        if args.lab:
+            fw.scope.enabled = False
+            print("[!] LAB MODE — scope gate OFF (allow-all); isolated lab only")
         if args.edition == "live" and (args.log or args.journal_dir or args.evidence_dir):
             print("note: the live edition keeps no logs; "
                   "--log/--journal-dir/--evidence-dir were ignored")
@@ -324,7 +334,7 @@ def main() -> None:
         console_launch(store=args.store, edition=args.edition, log=args.log,
                        journal_dir=args.journal_dir, evidence_dir=args.evidence_dir,
                        serve=args.serve, host=args.host, port=args.port,
-                       token=args.token)
+                       token=args.token, scope_file=args.scope, lab=args.lab)
     else:
         console_launch()
 

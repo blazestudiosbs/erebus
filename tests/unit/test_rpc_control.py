@@ -94,3 +94,50 @@ def test_live_edition_refuses_to_serve():
         create_app(Framework(edition="live"), token="t")
     with pytest.raises(RuntimeError):
         serve_in_thread(Framework(edition="live"))
+
+
+def test_scope_set_allow_mode_require_token_and_gate():
+    fw = Framework()  # deny-all by default
+    with _client(fw) as c:
+        # read endpoint is open; starts deny-all with no rules
+        d = c.get("/scope").json()
+        assert d["enabled"] is True and d["rules"] == []
+        # writes need the token
+        assert c.post("/scope/set", json={"text": "x"}).status_code == 401
+        assert c.post("/scope/allow", json={"target": "10.0.0.0/8"}).status_code == 401
+        assert c.post("/scope/mode", json={"enabled": False}).status_code == 401
+        # paste a scope -> gate on, rules loaded
+        d = c.post("/scope/set", json={"text": "charterops.app\n10.10.0.0/24 # lab\n",
+                                       "replace": True}, headers=AUTH).json()
+        assert d["enabled"] is True and "charterops.app" in d["rules"]
+        # an out-of-scope active job is refused (403) and never runs
+        r = c.post("/jobs", json={"module": "auxiliary/scanner/portscan",
+                                  "options": {"RHOSTS": "8.8.8.8"}}, headers=AUTH)
+        assert r.status_code == 403
+        # lab mode disables the gate
+        r2 = c.post("/scope/mode", json={"enabled": False}, headers=AUTH)
+        assert r2.json()["enabled"] is False
+        assert fw.scope.enabled is False
+
+
+def test_scope_set_rejects_bad_payload():
+    with _client(Framework()) as c:
+        assert c.post("/scope/allow", json={"target": ""}, headers=AUTH).status_code == 400
+        assert c.post("/scope/mode", json={"enabled": "yes"}, headers=AUTH).status_code == 400
+
+
+def test_report_requires_token_and_renders_html_md():
+    fw = _seed()
+    with _client(fw) as c:
+        assert c.get("/report?format=pdf").status_code == 401  # token required
+        rh = c.get("/report?format=html", headers=AUTH)
+        assert rh.status_code == 200 and "<html" in rh.text.lower()
+        rm = c.get("/report?format=md", headers=AUTH)
+        assert rm.status_code == 200
+        assert "attachment" in rm.headers.get("content-disposition", "")
+
+
+def test_research_endpoint_shape():
+    with _client(_seed()) as c:
+        d = c.get("/research").json()
+        assert "afl_available" in d and isinstance(d["crashes"], list)
