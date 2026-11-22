@@ -15,6 +15,7 @@ import asyncio
 import json
 import os
 import secrets
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional  # noqa: UP035
@@ -64,7 +65,8 @@ def create_app(framework: Any, token: str | None = None,
         raise RuntimeError(_LIVE_HINT)
 
     token = token or secrets.token_urlsafe(24)
-    state: dict[str, Any] = {"bridge": None, "unsub": None}
+    state: dict[str, Any] = {"bridge": None, "unsub": None,
+                             "webconsole": None, "console_lock": threading.Lock()}
 
     @asynccontextmanager
     async def lifespan(app: Any) -> Any:
@@ -308,6 +310,37 @@ def create_app(framework: Any, token: str | None = None,
         except ConnectorError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from None
         return {"answer": answer, "provider": provider}
+
+    @app.post("/console", dependencies=[Depends(require_token)])
+    def console_cmd(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006  (sync: runs in threadpool)
+        import contextlib
+        import io
+        import re
+        line = str(payload.get("command", "")).strip()
+        if not line:
+            return {"output": ""}
+        verb = line.split()[0].lower()
+        if verb in ("exit", "quit", "eof") or line.startswith("!"):
+            return {"output": "(not available in the web console)\n"}
+        buf = io.StringIO()
+        with state["console_lock"]:
+            with contextlib.redirect_stdout(buf):
+                con = state.get("webconsole")
+                if con is None:
+                    from erebus.console import EreConsole
+
+                    class _WebConsole(EreConsole):  # don't tee log events to process stdout
+                        def _on_log(self, e: Any) -> None:
+                            pass
+
+                    con = _WebConsole(framework=framework)
+                    state["webconsole"] = con
+                try:
+                    con.onecmd(line)
+                except Exception as exc:  # noqa: BLE001  (a console shows the error, never crashes)
+                    print(f"error: {exc}")
+        out = re.sub(r"\x1b\[[0-9;]*m", "", buf.getvalue())  # strip ANSI colour
+        return {"output": out}
 
     @app.websocket("/ws/events")
     async def ws_events(ws: WebSocket) -> None:

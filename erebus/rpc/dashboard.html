@@ -129,13 +129,21 @@
   .find .detail .row{ margin:3px 0; } .find .detail .k{ color:#6e6a85; display:inline-block; min-width:96px; }
   .find .steps h5{ margin:10px 0 4px; font-size:11px; color:#8a81ad; text-transform:uppercase; letter-spacing:.4px; }
   .find .steps ul{ margin:0; padding-left:18px; } .find .steps li{ margin:3px 0; color:#cfc6ef; }
+  /* web console / terminal */
+  .term-wrap{ max-width:900px; margin:0 auto; display:flex; flex-direction:column; min-height:calc(100vh - 150px); }
+  .term-out{ flex:1; min-height:340px; overflow:auto; background:rgba(6,5,12,0.9); border:1px solid #1b1630; border-radius:10px; padding:12px 14px; font-family:ui-monospace,monospace; font-size:12.5px; line-height:1.55; white-space:pre-wrap; word-break:break-word; color:#cfc6ef; }
+  .term-out .cmd{ color:var(--accent); margin-top:6px; } .term-out .err{ color:#ff9d2e; }
+  .term-in{ display:flex; align-items:center; gap:8px; margin-top:10px; background:rgba(16,12,28,0.9); border:1px solid #2a2340; border-radius:10px; padding:2px 12px; }
+  .term-in:focus-within{ border-color:var(--accent); }
+  .term-in .pr{ color:var(--accent); font-family:ui-monospace,monospace; font-size:13px; white-space:nowrap; }
+  .term-in input{ flex:1; background:transparent; border:0; outline:none; color:#e6e1ff; font-family:ui-monospace,monospace; font-size:13px; padding:9px 0; }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Research</span><span>Reports</span><span>Notes</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Research</span><span>Reports</span><span>Notes</span><span>Terminal</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -223,6 +231,14 @@
         <div class="notes-bar"><span class="dot" id="notes-dot"></span><span id="notes-status">loading...</span><span style="margin-left:auto" id="notes-path"></span></div>
       </div>
     </div>
+    <div class="view-panel" id="terminalview" style="display:none">
+      <div class="term-wrap">
+        <h2>Console</h2>
+        <p class="psub">The Erebus console, in the browser - same live session as the dashboard. Try: <code>search auxiliary</code> &middot; <code>use &lt;module&gt;</code> &middot; <code>options</code> &middot; <code>set RHOSTS &lt;host&gt;</code> &middot; <code>run</code> &middot; <code>scope show</code> &middot; <code>hosts</code> &middot; <code>findings</code>. No OS shell - Erebus commands only.</p>
+        <div class="term-out" id="term-out"><div style="color:#6e6a85">type a command below - e.g.  search auxiliary</div></div>
+        <div class="term-in"><span class="pr">erebus &gt;</span><input id="term-in" autocomplete="off" spellcheck="false" placeholder="command"/></div>
+      </div>
+    </div>
   </div>
   <aside class="rail">
     <div class="tiles">
@@ -257,7 +273,7 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Research:'researchview', Reports:'reportsview', Notes:'notesview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   var curView='Flow', pollTimer=null;
   function setView(name){
     if(name!=='Flow' && !PANELS[name]) return;
@@ -276,6 +292,7 @@
     else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
     else if(name==='Reports'){ repStatus(''); }
     else if(name==='Notes'){ loadNotes(); }
+    else if(name==='Terminal'){ var ti=document.getElementById('term-in'); if(ti) ti.focus(); }
   }
   (function(){ var tabs=document.querySelectorAll('.tabs span');
     for(var i=0;i<tabs.length;i++){ (function(sp){ sp.onclick=function(){ setView(sp.textContent.trim()); }; })(tabs[i]); } })();
@@ -493,6 +510,28 @@
   (function(){ var b=document.getElementById('ask-send'), i=document.getElementById('ask-box');
     if(b) b.onclick=askCopilot;
     if(i) i.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); askCopilot(); } }); })();
+
+  // ---- web console (Terminal tab): Erebus commands only, no OS shell --------
+  var termHist=[], termHi=0;
+  function termWrite(html){ var box=document.getElementById('term-out'); if(!box) return;
+    box.innerHTML+=html; box.scrollTop=box.scrollHeight; }
+  function runConsole(){
+    var inp=document.getElementById('term-in'); var cmd=((inp&&inp.value)||'').trim();
+    if(!cmd) return;
+    if(!hasTok()){ termWrite('<div class="err">not connected to a live server - run  erebus console --serve</div>'); return; }
+    termHist.push(cmd); termHi=termHist.length;
+    termWrite('<div class="cmd">erebus &gt; '+escHtml(cmd)+'</div>');
+    inp.value=''; inp.disabled=true;
+    apiPost('console',{command:cmd}).then(function(res){ inp.disabled=false; inp.focus();
+      if(res.ok){ var out=(res.j.output||'').replace(/\s+$/,''); if(out) termWrite('<div>'+escHtml(out)+'</div>'); }
+      else { termWrite('<div class="err">'+((res.j&&res.j.detail)||('HTTP '+res.status))+'</div>'); } })
+    .catch(function(e){ inp.disabled=false; termWrite('<div class="err">request failed: '+e+'</div>'); });
+  }
+  (function(){ var i=document.getElementById('term-in'); if(!i) return;
+    i.addEventListener('keydown',function(e){
+      if(e.key==='Enter'){ e.preventDefault(); runConsole(); }
+      else if(e.key==='ArrowUp'){ e.preventDefault(); if(termHi>0){ termHi--; i.value=termHist[termHi]||''; } }
+      else if(e.key==='ArrowDown'){ e.preventDefault(); if(termHi<termHist.length-1){ termHi++; i.value=termHist[termHi]||''; } else { termHi=termHist.length; i.value=''; } } }); })();
 
   function bin(id){ var h=0,i; for(i=0;i<id.length;i++){h=(h*31+id.charCodeAt(i))&255;} return h.toString(2).padStart(8,'0'); }
   function disp(n){ return n.disp||n.id; }
