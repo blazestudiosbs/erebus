@@ -171,6 +171,25 @@ def _sandbox(args: argparse.Namespace) -> int:
     return 124 if res.timed_out else res.rc
 
 
+def _fuzz(args: argparse.Namespace) -> int:
+    """Fuzz an authorized lab target and print a triage summary of the crashes."""
+    from .research import FuzzRunner, FuzzSpec, ResearchError, bucket_crashes, summarize
+
+    spec = FuzzSpec(target=args.target, input_dir=args.input, output_dir=args.output,
+                    fuzzer=args.fuzzer, timeout=args.timeout, extra=args.extra or [])
+    print(f"fuzzing {args.target} with {args.fuzzer} for ~{args.timeout:.0f}s "
+          "(authorized lab targets only) ...")
+    try:
+        res = FuzzRunner().run(spec)
+    except ResearchError as exc:
+        print(f"error: {exc}")
+        return 2
+    buckets = bucket_crashes(res.crashes)
+    print(f"rc={res.rc} timed_out={res.timed_out} crashes={len(res.crashes)}")
+    print(summarize(buckets))
+    return 0
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
@@ -248,6 +267,16 @@ def main() -> None:
                      help="seconds before the run is killed")
     sbx.add_argument("poc_args", nargs="*", help="arguments passed to the script")
 
+    fz = sub.add_parser("fuzz",
+                        help="fuzz an authorized lab target and triage the crashes")
+    fz.add_argument("--target", required=True,
+                    help="the lab program to fuzz (must be yours or authorized)")
+    fz.add_argument("--input", required=True, help="seed corpus directory")
+    fz.add_argument("--output", required=True, help="directory for fuzzer findings")
+    fz.add_argument("--fuzzer", default="afl-fuzz", help="fuzzer binary (AFL++ default)")
+    fz.add_argument("--timeout", type=float, default=60.0, help="fuzzing duration seconds")
+    fz.add_argument("extra", nargs="*", help="extra fuzzer flags (placed before -- target)")
+
     args = p.parse_args()
     if args.cmd == "intel":
         _intel(args)
@@ -257,6 +286,8 @@ def main() -> None:
         raise SystemExit(_report(args))
     elif args.cmd == "sandbox":
         raise SystemExit(_sandbox(args))
+    elif args.cmd == "fuzz":
+        raise SystemExit(_fuzz(args))
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve
