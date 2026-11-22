@@ -61,6 +61,22 @@ class Session:
             self.journal.record("in", data)
         return data
 
+    def command(self, line: str, settle: float = 0.4, overall: float = 5.0) -> str:
+        """Send one command line and return output gathered until the peer goes quiet.
+
+        Convenience for interactive shells: writes ``line`` + newline, then reads
+        until nothing arrives within ``settle`` seconds (or ``overall`` elapses).
+        """
+        self.send((line.rstrip("\n") + "\n").encode())
+        chunks: list[bytes] = []
+        deadline = time.time() + overall
+        while time.time() < deadline:
+            data = self.recv(timeout=settle)
+            if not data:
+                break
+            chunks.append(data)
+        return b"".join(chunks).decode(errors="replace")
+
     def close(self) -> None:
         if self.closed is None:
             self.closed = time.time()
