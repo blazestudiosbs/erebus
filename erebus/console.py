@@ -61,7 +61,8 @@ class EreConsole(cmd.Cmd):
     def _status(self) -> None:
         s = self.fw
         line = (f"[ {s.config['edition']} · scope: {len(s.scope.show())} rule(s) "
-                f"· jobs: {len(s.jobs())} · Tor: {'on' if s.config['tor'] else 'off'} ]")
+                f"· sessions: {len(s.sessions.live())} · jobs: {len(s.jobs())} "
+                f"· Tor: {'on' if s.config['tor'] else 'off'} ]")
         print(col(line, "dim"))
 
     # --- commands ---
@@ -175,6 +176,57 @@ class EreConsole(cmd.Cmd):
         """findings  — list findings."""
         for r in self.fw.store.findings():
             print(f"  {r['host']:18} {r['severity']:8} {r['title']}")
+
+    def do_sessions(self, arg: str) -> None:
+        """sessions | sessions -i <id> | sessions -k <id>
+        List live sessions, interact with one, or kill one."""
+        parts = shlex.split(arg)
+        mgr = self.fw.sessions
+        if not parts:
+            live = mgr.live()
+            if not live:
+                print(col("  (no live sessions)", "dim"))
+            for s in live:
+                print(f"  {s.id:<3} {s.kind:6} {s.host}:{s.port}  {s.transport}")
+            return
+        if parts[0] == "-k" and len(parts) > 1:
+            mgr.close(int(parts[1]))
+            print(f"closed session {parts[1]}")
+            return
+        if parts[0] == "-i" and len(parts) > 1:
+            self._interact(int(parts[1]))
+            return
+        print("usage: sessions [-i <id> | -k <id>]")
+
+    def _interact(self, sid: int) -> None:
+        sess = self.fw.sessions.get(sid)
+        if sess is None or not sess.alive:
+            print(col(f"  no live session {sid}", "error"))
+            return
+        print(col(f"  session {sid} ({sess.host}:{sess.port}) — commands run on the "
+                  f"target; 'background' to leave", "dim"))
+        banner = sess.recv(timeout=0.3)
+        if banner:
+            print(banner.decode(errors="replace"), end="")
+        while True:
+            try:
+                line = input(col(f"session {sid} > ", "accent"))
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+            if line.strip() in ("background", "bg", "exit"):
+                return
+            if not sess.alive:
+                print(col("  session closed", "warn"))
+                return
+            try:
+                out = sess.command(line)
+            except OSError as exc:
+                print(col(f"  session error: {exc}", "error"))
+                self.fw.sessions.close(sid)
+                return
+            if out:
+                print(out, end="" if out.endswith("\n") else "\n")
 
     def do_vuln(self, arg: str) -> None:
         """vuln <product> [version]  — correlate against the intel DB (NVD/KEV/EPSS)."""
