@@ -169,3 +169,19 @@ def test_copilot_unknown_provider_400():
     with _client(Framework()) as c:
         r = c.post("/copilot", json={"question": "x", "provider": "nope"}, headers=AUTH)
         assert r.status_code == 400
+
+
+def test_console_runs_erebus_commands_and_blocks_shell():
+    with _client(Framework()) as c:
+        assert c.post("/console", json={"command": "search auxiliary"}).status_code == 401
+        r = c.post("/console", json={"command": "search auxiliary"}, headers=AUTH)
+        out = r.json()["output"]
+        assert "auxiliary" in out
+        # session state persists across requests (use -> options shows the module's options)
+        c.post("/console", json={"command": "use auxiliary/scanner/portscan"}, headers=AUTH)
+        opts = c.post("/console", json={"command": "options"}, headers=AUTH).json()["output"]
+        assert "RHOSTS" in opts
+        # no OS shell escape, and exit can't kill the REPL
+        shell = c.post("/console", json={"command": "!ls"}, headers=AUTH).json()["output"]
+        quit_ = c.post("/console", json={"command": "exit"}, headers=AUTH).json()["output"]
+        assert "not available" in shell and "not available" in quit_
