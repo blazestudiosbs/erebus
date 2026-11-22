@@ -1,0 +1,23 @@
+# Install once: pip install pre-commit && pre-commit install
+# Runs the same gates as CI before each commit.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy erebus
+        entry: mypy erebus
+        language: system
+        types: [python]
+        pass_filenames: false

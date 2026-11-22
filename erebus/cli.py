@@ -73,7 +73,8 @@ def _intel(args: argparse.Namespace) -> None:
     if args.intel_cmd == "update":
         api_key = args.api_key or _vault_key("nvd")  # NVD key: flag, else the vault
         counts = intel_ingest.update(store, keyword=args.keyword, api_key=api_key)
-        errors = counts.get("errors") or {}
+        errs = counts.get("errors")
+        errors: dict[str, str] = errs if isinstance(errs, dict) else {}
         print(f"nvd={counts['nvd']} kev={counts['kev']} epss={counts['epss']}  "
               f"total={store.count()}")
         for src, msg in errors.items():
