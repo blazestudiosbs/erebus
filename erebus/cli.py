@@ -311,7 +311,9 @@ def main() -> None:
             raise SystemExit("error: the live (amnesic) edition does not serve the dashboard")
         fw = Framework(store_path=args.store, edition=args.edition, log_path=args.log,
                        journal_dir=args.journal_dir, evidence_dir=args.evidence_dir)
-        print(f"Erebus RPC → http://{args.host}:{args.port}  "
+        from .lib.term import link as _link
+        _url = f"http://{args.host}:{args.port}"
+        print(f"Erebus RPC → {_link(_url)}  "
               f"(/graph, /ws/events)  edition={fw.config.get('edition')}")
         if args.edition == "live" and (args.log or args.journal_dir or args.evidence_dir):
             print("note: the live edition keeps no logs; "

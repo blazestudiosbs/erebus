@@ -330,7 +330,8 @@ def launch(store: str = ":memory:", edition: str = "workstation", log: str | Non
         try:
             server, _, tok = serve_in_thread(fw, host=host, port=port, token=token)
             print(col(f"  RPC token: {tok}", "dim"))
-            print(col(f"◆ dashboard → http://{host}:{port}  "
+            from .lib.term import link as _link
+            print(col(f"◆ dashboard → {_link(f'http://{host}:{port}')}  "
                       f"(live; shares this console)", "accent"))
         except RuntimeError as exc:
             print(col(f"[!] dashboard not started: {exc}", "warn"))
