@@ -23,6 +23,8 @@ USER_AGENT = "erebus-connector/0.1"
 
 # transport(url, headers, timeout) -> (status, body)
 Transport = Callable[[str, dict[str, str], float], tuple[int, bytes]]
+# post_transport(url, headers, body, timeout) -> (status, body)
+PostTransport = Callable[[str, dict[str, str], bytes, float], tuple[int, bytes]]
 
 
 class ConnectorError(RuntimeError):
@@ -46,17 +48,29 @@ def urllib_transport(url: str, headers: dict[str, str], timeout: float) -> tuple
         return exc.code, exc.read() or b""
 
 
+def urllib_post_transport(url: str, headers: dict[str, str], body: bytes,
+                          timeout: float) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - https only
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read() or b""
+
+
 class Connector:
     name = "base"
     base_url = ""
     key_name = ""  # vault entry; "" means the service needs no key
 
     def __init__(self, vault: Vault, offline: bool = False, tor: bool = False,
-                 transport: Transport | None = None, timeout: float = 20.0) -> None:
+                 transport: Transport | None = None, timeout: float = 20.0,
+                 post_transport: PostTransport | None = None) -> None:
         self.vault = vault
         self.offline = offline
         self.tor = tor
         self.transport = transport or urllib_transport
+        self.post_transport = post_transport or urllib_post_transport
         self.timeout = timeout
 
     def api_key(self) -> str:
@@ -78,14 +92,7 @@ class Connector:
     def get_json(self, path: str, params: dict[str, str] | None = None,
                  secret_params: dict[str, str] | None = None) -> Any:
         """GET ``base_url + path`` and decode JSON. ``secret_params`` are never echoed."""
-        if self.offline:
-            raise NetworkDisabled(f"{self.name}: offline mode is on; no network calls")
-        if self.tor:
-            raise NetworkDisabled(
-                f"{self.name}: Tor mode is on but connectors can't route via Tor yet; "
-                "refusing to send in the clear")
-        if not self.base_url.startswith("https://"):
-            raise ConnectorError(f"{self.name}: refusing non-https base URL")
+        self._check_network()
 
         query = {**(params or {}), **(secret_params or {})}
         url = self.base_url + path + (f"?{urllib.parse.urlencode(query)}" if query else "")
@@ -106,3 +113,45 @@ class Connector:
             return json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
             raise ConnectorError(f"{self.name}: {safe_path} returned invalid JSON") from None
+
+    def _check_network(self) -> None:
+        """Shared guard for every outbound call: offline, Tor, https-only."""
+        if self.offline:
+            raise NetworkDisabled(f"{self.name}: offline mode is on; no network calls")
+        if self.tor:
+            raise NetworkDisabled(
+                f"{self.name}: Tor mode is on but connectors can't route via Tor yet; "
+                "refusing to send in the clear")
+        if not self.base_url.startswith("https://"):
+            raise ConnectorError(f"{self.name}: refusing non-https base URL")
+
+    def post_json(self, path: str, payload: dict[str, Any],
+                  secret_headers: dict[str, str] | None = None,
+                  extra_headers: dict[str, str] | None = None) -> Any:
+        """POST ``payload`` as JSON to ``base_url + path``; decode the JSON reply.
+
+        ``secret_headers`` (e.g. an API key header) are sent but never echoed in errors.
+        """
+        self._check_network()
+        body = json.dumps(payload).encode("utf-8")
+        headers = {"User-Agent": USER_AGENT, "Accept": "application/json",
+                   "Content-Type": "application/json",
+                   **(extra_headers or {}), **(secret_headers or {})}
+        secrets = list((secret_headers or {}).values())
+        url = self.base_url + path
+        try:
+            status, resp = self.post_transport(url, headers, body, self.timeout)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise ConnectorError(self._redact(
+                f"{self.name}: {path} unreachable: {exc}", secrets)) from None
+        if status in (401, 403):
+            raise MissingKey(f"{self.name}: API key rejected (HTTP {status}); "
+                             f"update it with: erebus vault set {self.key_name}")
+        if status != 200:
+            snippet = resp.decode("utf-8", "replace")[:200]
+            raise ConnectorError(self._redact(
+                f"{self.name}: {path} returned HTTP {status}: {snippet}", secrets))
+        try:
+            return json.loads(resp.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            raise ConnectorError(f"{self.name}: {path} returned invalid JSON") from None
