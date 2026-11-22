@@ -118,6 +118,16 @@ def create_app(framework: Any, token: str | None = None,
             html = inject + html
         return HTMLResponse(html)
 
+    @app.get("/copilot.png")
+    async def copilot_png() -> Any:
+        asset = Path(__file__).resolve().parent / "assets" / "copilot.png"
+        try:
+            data = asset.read_bytes()
+        except OSError:
+            raise HTTPException(status_code=404, detail="asset not found") from None
+        return Response(content=data, media_type="image/png",
+                        headers={"Cache-Control": "max-age=86400"})
+
     @app.get("/health")
     async def health() -> dict[str, Any]:
         return {

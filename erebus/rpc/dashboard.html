@@ -47,6 +47,9 @@
   .ask-answer .ah{ display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
   .ask-answer .ax{ margin-left:auto; cursor:pointer; color:#6e6a85; }
   .ask-answer .ax:hover{ color:#cfc6ef; }
+  .cpimg{ width:20px; height:20px; border-radius:5px; margin-right:7px; image-rendering:pixelated; flex:0 0 auto; }
+  .ask .cp{ display:inline-flex; align-items:center; }
+  .ask-answer .ah .cpimg{ width:18px; height:18px; margin-right:4px; border-radius:4px; }
   .rail{ border-left:1px solid #1b1630; padding:14px; display:flex; flex-direction:column; gap:12px; overflow:hidden; }
   .tiles{ display:grid; grid-template-columns:1fr 1fr; gap:9px; }
   .tile{ background:rgba(20,16,34,0.6); border:1px solid #1b1630; border-radius:10px; padding:9px 11px; }
@@ -147,7 +150,7 @@
     <div class="toggle"><button id="m-graph" class="on">graph</button><button id="m-tree">tree</button></div>
     <div class="conn"><span class="dot off" id="rpcdot"></span><span class="lbl" id="rpclbl">offline &middot; sample data</span><button id="rpcbtn">reconnect</button></div>
     <div class="hint">drag &middot; scroll &middot; click</div>
-    <div class="ask"><input id="ask-box" class="box" placeholder="Ask Erebus — or leave blank for next-step suggestions" autocomplete="off" spellcheck="false"/><span class="cp" id="ask-send">&#10022; copilot</span></div>
+    <div class="ask"><input id="ask-box" class="box" placeholder="Ask Erebus — or leave blank for next-step suggestions" autocomplete="off" spellcheck="false"/><span class="cp" id="ask-send"><img src="copilot.png" class="cpimg" alt="copilot"/>copilot</span></div>
     <div class="ask-answer" id="ask-answer" style="display:none"></div>
     <div class="view-targets" id="targetsview" style="display:none">
       <div class="tgt-wrap">
@@ -469,8 +472,8 @@
   function showAnswer(kind, text, provider){
     var box=document.getElementById('ask-answer'); if(!box) return;
     var color=kind==='error'?'#ff9d2e':(kind==='think'?'#22e0ff':'#5dffa5');
-    var label=kind==='ok'?('✦ copilot'+(provider?(' · '+provider):'')):'✦ copilot';
-    box.innerHTML='<div class="ah"><span style="color:'+color+'">'+label+'</span><span class="ax" id="ask-close">close</span></div>'+escHtml(text);
+    var label=kind==='ok'?('copilot'+(provider?(' · '+provider):'')):'copilot';
+    box.innerHTML='<div class="ah"><img src="copilot.png" class="cpimg" alt=""/><span style="color:'+color+'">'+label+'</span><span class="ax" id="ask-close">close</span></div>'+escHtml(text);
     box.style.display='block';
     var c=document.getElementById('ask-close'); if(c) c.onclick=function(){ box.style.display='none'; };
   }
