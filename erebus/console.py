@@ -250,6 +250,29 @@ class EreConsole(cmd.Cmd):
             epss = f" EPSS={r['epss']:.2f}" if r["epss"] is not None else ""
             print(f"  {r['id']:16} {r['severity'] or '-':9} CVSS={r['cvss']}{epss}{kev}")
 
+    def do_ask(self, arg: str) -> None:
+        """ask <question>  — ask the LLM copilot about the current engagement."""
+        import os
+
+        from .connectors.base import ConnectorError
+        from .connectors.llm import LLMConnector
+        from .copilot import Copilot
+
+        question = arg.strip()
+        if not question:
+            print("usage: ask <question>")
+            return
+        provider = os.environ.get("EREBUS_LLM", "anthropic")
+        try:
+            connector = LLMConnector(self.fw.vault, provider=provider,
+                                     offline=bool(self.fw.config.get("offline")),
+                                     tor=bool(self.fw.config.get("tor")))
+            answer = Copilot(self.fw, connector).ask(question)
+        except ConnectorError as exc:
+            print(col(f"copilot unavailable: {exc}", "warn"))
+            return
+        print(col(answer.strip(), "info"))
+
     def do_reload(self, arg: str) -> None:
         """reload  — re-scan the modules/ tree."""
         self.fw.loader.discover()
