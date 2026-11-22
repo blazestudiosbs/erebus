@@ -45,6 +45,7 @@ from .graph import build_graph
 
 _DASHBOARD = Path(__file__).with_name("dashboard.html")
 _RPC_HINT = 'The RPC server needs FastAPI + uvicorn. Install with: pip install -e ".[rpc]"'
+_LIVE_HINT = "the live (amnesic) edition does not serve the dashboard"
 
 
 def create_app(framework: Any, token: str | None = None,
@@ -57,6 +58,8 @@ def create_app(framework: Any, token: str | None = None,
     """
     if not _FASTAPI_OK:
         raise RuntimeError(_RPC_HINT)
+    if framework.config.get("edition") == "live":
+        raise RuntimeError(_LIVE_HINT)
 
     token = token or secrets.token_urlsafe(24)
     state: dict[str, Any] = {"bridge": None, "unsub": None}

@@ -86,3 +86,11 @@ def test_dashboard_injects_token_and_ws_uses_it():
         html = c.get("/").text
     assert "window.EREBUS_TOKEN=" in html   # server injects the token
     assert "?token=" in html                # the dashboard's WS carries it
+
+
+def test_live_edition_refuses_to_serve():
+    from erebus.rpc.server import create_app, serve_in_thread
+    with pytest.raises(RuntimeError):
+        create_app(Framework(edition="live"), token="t")
+    with pytest.raises(RuntimeError):
+        serve_in_thread(Framework(edition="live"))
