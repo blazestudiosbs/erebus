@@ -332,32 +332,48 @@
     actEl.innerHTML=actLog.join('');
   }
 
-  var ws=null, refetchTimer=null;
+  var ws=null, es=null, refetchTimer=null, reconnTimer=null, wsFails=0, closing=false;
   function setConn(live){ var d=document.getElementById('rpcdot'), l=document.getElementById('rpclbl');
     d.className='dot '+(live?'live':'off'); l.textContent=live?'live · connected':'offline · sample data'; }
 
   function refetchGraph(){ clearTimeout(refetchTimer); refetchTimer=setTimeout(function(){
     fetch('graph',{cache:'no-store'}).then(function(r){return r.json();}).then(applyLive).catch(function(){}); }, 250); }
 
+  function onStreamMsg(m){ if(m.type==='graph.snapshot'){ applyLive(m.data); } else { pushActivity(m); refetchGraph(); } }
+  function tokq(){ return window.EREBUS_TOKEN?('?token='+encodeURIComponent(window.EREBUS_TOKEN)):''; }
+
+  function scheduleReconnect(){ if(closing) return; clearTimeout(reconnTimer);
+    var wait=Math.min(8000, 1000*Math.pow(2, Math.min(wsFails,3)));
+    reconnTimer=setTimeout(function(){ if(!closing) tryLive(); }, wait); }
+
   function openWS(){
     try{
       var proto=(location.protocol==='https:')?'wss':'ws';
-      var tok=window.EREBUS_TOKEN?('?token='+encodeURIComponent(window.EREBUS_TOKEN)):'';
-      ws=new WebSocket(proto+'//'+location.host+'/ws/events'+tok);
-      ws.onmessage=function(e){ var m=JSON.parse(e.data);
-        if(m.type==='graph.snapshot'){ applyLive(m.data); }
-        else { pushActivity(m); refetchGraph(); } };
-      ws.onclose=function(){ setConn(false); };
+      ws=new WebSocket(proto+'//'+location.host+'/ws/events'+tokq());
+      ws.onopen=function(){ setConn(true); wsFails=0; };
+      ws.onmessage=function(e){ try{ onStreamMsg(JSON.parse(e.data)); }catch(_){} };
       ws.onerror=function(){ try{ws.close();}catch(_){} };
+      ws.onclose=function(){ ws=null; if(closing) return; setConn(false); wsFails++;
+        if(wsFails>=3){ openSSE(); } else { scheduleReconnect(); } };
+    }catch(_){ scheduleReconnect(); }
+  }
+
+  function openSSE(){  // fallback where the WebSocket won't hold open
+    try{ if(es){ try{es.close();}catch(_){} }
+      es=new EventSource('events'+tokq());
+      es.onopen=function(){ setConn(true); };
+      es.onmessage=function(e){ try{ onStreamMsg(JSON.parse(e.data)); }catch(_){} };
+      es.onerror=function(){ setConn(false); };  // EventSource retries on its own
     }catch(_){}
   }
 
-  function tryLive(){
+  function tryLive(){ closing=false;
     fetch('graph',{cache:'no-store'}).then(function(r){ if(!r.ok) throw 0; return r.json(); })
       .then(function(doc){ setConn(true); applyLive(doc); openWS(); })
-      .catch(function(){ setConn(false); /* keep sample scene */ });
+      .catch(function(){ setConn(false); scheduleReconnect(); });
   }
-  document.getElementById('rpcbtn').onclick=function(){ if(ws){try{ws.close();}catch(_){}} tryLive(); };
+  document.getElementById('rpcbtn').onclick=function(){ closing=true; clearTimeout(reconnTimer); wsFails=0;
+    if(ws){try{ws.close();}catch(_){}} if(es){try{es.close();}catch(_){} es=null;} tryLive(); };
   tryLive();
 
   // ---- interaction -----------------------------------------------------

@@ -183,7 +183,11 @@ def create_app(framework: Any, token: str | None = None,
             await ws.close(code=1008)
             return
         await ws.accept()
-        bridge: EventBridge = state["bridge"]
+        bridge = state.get("bridge")
+        if bridge is None:  # lifespan not ready — send a snapshot and let the client retry
+            await ws.send_text(json.dumps({"type": "graph.snapshot", "data": _graph()}))
+            await ws.close(code=1012)
+            return
         q = bridge.add_client()
         await ws.send_text(json.dumps({"type": "graph.snapshot", "data": _graph()}))
         try:
