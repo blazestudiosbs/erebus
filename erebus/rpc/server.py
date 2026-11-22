@@ -124,3 +124,28 @@ def serve(framework: Any, host: str = "127.0.0.1", port: int = 8777) -> None:
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise RuntimeError(_RPC_HINT) from exc
     uvicorn.run(create_app(framework), host=host, port=port, log_level="info")
+
+
+def serve_in_thread(framework: Any, host: str = "127.0.0.1", port: int = 8777) -> Any:
+    """Boot the RPC server in a background daemon thread sharing ``framework``.
+
+    Returns ``(server, thread)``. Unlike :func:`serve`, this does not block: the
+    caller (e.g. the interactive console) keeps running in the foreground while
+    the dashboard reads the *same* framework — so a run typed in the console
+    streams live over ``/ws/events``. Requires the ``rpc`` extra.
+    """
+    if not _FASTAPI_OK:
+        raise RuntimeError(_RPC_HINT)
+    import threading
+
+    try:
+        import uvicorn
+    except ModuleNotFoundError as exc:  # pragma: no cover - exercised only without the extra
+        raise RuntimeError(_RPC_HINT) from exc
+
+    # uvicorn skips signal handlers off the main thread, so running here is safe.
+    config = uvicorn.Config(create_app(framework), host=host, port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, name="erebus-rpc", daemon=True)
+    thread.start()
+    return server, thread
