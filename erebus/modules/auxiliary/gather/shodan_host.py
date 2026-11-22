@@ -9,33 +9,13 @@ Module key: ``auxiliary/gather/shodan_host``.
 """
 from __future__ import annotations
 
-import socket
-
 from erebus.connectors.base import ConnectorError, MissingKey, NetworkDisabled
 from erebus.connectors.shodan import ShodanConnector, parse_host
 from erebus.core import events as ev
 from erebus.core.module_base import Auxiliary, Rank
 from erebus.core.options import OptionSpec
 from erebus.core.scope import ScopeError
-
-
-def _resolve(target: str) -> list[str]:
-    """Return IP(s) for ``target``. An IP literal is returned as-is; a hostname is
-    resolved via DNS. Empty on failure. (DNS asks a resolver, not the target host.)"""
-    try:
-        socket.inet_aton(target)
-        return [target]
-    except OSError:
-        pass
-    try:
-        ips: list[str] = []
-        for info in socket.getaddrinfo(target, None):
-            ip = str(info[4][0])
-            if ip and ip not in ips:
-                ips.append(ip)
-        return ips
-    except OSError:
-        return []
+from erebus.lib.dns import resolve_ips as _resolve
 
 
 class ShodanHost(Auxiliary):

@@ -289,6 +289,7 @@
   var RECON=[
     {label:'Passive OSINT (Shodan)', module:'auxiliary/gather/shodan_search', opt:'QUERY', note:'queries Shodan index - no packets to the target - needs:  erebus vault set shodan'},
     {label:'Shodan host lookup (free key)', module:'auxiliary/gather/shodan_host', opt:'HOST', note:'resolves the host and asks Shodan what it knows - works on a FREE Shodan key - passive'},
+    {label:'Subdomain enum (crt.sh)', module:'auxiliary/gather/dns_enum', opt:'DOMAIN', note:'passive - pulls subdomains from certificate transparency logs and resolves the live ones - no key'},
     {label:'Port scan',              module:'auxiliary/scanner/portscan',      opt:'RHOSTS', note:'pure-python TCP connect scan - gated to the scope above'},
     {label:'Nmap',                   module:'auxiliary/scanner/nmap',          opt:'RHOSTS', note:'needs the nmap binary - gated to the scope above'},
     {label:'Web scan (nuclei)',      module:'auxiliary/scanner/nuclei',        opt:'RHOST',  note:'needs the nuclei binary - gated to the scope above'},
