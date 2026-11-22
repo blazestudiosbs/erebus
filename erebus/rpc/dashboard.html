@@ -106,13 +106,26 @@
   .find .ttl{ color:#e6e1ff; font-size:13.5px; } .find .meta{ color:#8a81ad; font-size:11.5px; font-family:ui-monospace,monospace; margin-top:4px; }
   .sev-critical{ border-left-color:#ff3df5; } .sev-high{ border-left-color:#ff6a6a; } .sev-medium{ border-left-color:#ff9d2e; } .sev-low{ border-left-color:#22e0ff; } .sev-info{ border-left-color:#5a5470; }
   .empty{ color:#6e6a85; font-family:ui-monospace,monospace; font-size:13px; padding:20px 0; }
+  /* notes */
+  .notes-wrap{ max-width:900px; margin:0 auto; display:flex; flex-direction:column; min-height:calc(100vh - 150px); }
+  .notes-ta{ flex:1; min-height:340px; width:100%; resize:vertical; background:rgba(10,8,18,0.7); border:1px solid #2a2340; border-radius:10px; padding:14px 16px; color:#e6e1ff; font-family:ui-monospace,monospace; font-size:13.5px; line-height:1.6; outline:none; }
+  .notes-ta:focus{ border-color:var(--accent); }
+  .notes-bar{ display:flex; align-items:center; gap:12px; margin-top:10px; font-size:12px; color:#6e6a85; font-family:ui-monospace,monospace; }
+  .notes-bar .dot{ width:7px; height:7px; border-radius:50%; background:#5a5470; }
+  .notes-bar .dot.saved{ background:#5dffa5; } .notes-bar .dot.dirty{ background:#ff9d2e; } .notes-bar .dot.err{ background:#ff6a6a; }
+  /* findings detail */
+  .find.clk{ cursor:pointer; } .find.open{ background:rgba(20,16,34,0.7); }
+  .find .detail{ margin-top:10px; padding-top:10px; border-top:1px solid #1b1630; font-size:12px; color:#9a92b8; font-family:ui-monospace,monospace; }
+  .find .detail .row{ margin:3px 0; } .find .detail .k{ color:#6e6a85; display:inline-block; min-width:96px; }
+  .find .steps h5{ margin:10px 0 4px; font-size:11px; color:#8a81ad; text-transform:uppercase; letter-spacing:.4px; }
+  .find .steps ul{ margin:0; padding-left:18px; } .find .steps li{ margin:3px 0; color:#cfc6ef; }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Research</span><span>Reports</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Research</span><span>Reports</span><span>Notes</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -191,6 +204,14 @@
         <div class="tgt-status" id="rep-status"></div>
       </div>
     </div>
+    <div class="view-panel" id="notesview" style="display:none">
+      <div class="notes-wrap">
+        <h2>Notes</h2>
+        <p class="psub">A living engagement notepad - findings, next steps, loose ends. Saved to disk and persists across restarts.</p>
+        <textarea class="notes-ta" id="notes-ta" spellcheck="false" placeholder="# caporia.co - engagement notes&#10;&#10;- [ ] nuclei: review criticals&#10;- [ ] confirm open ports from the scan&#10;- next: ..."></textarea>
+        <div class="notes-bar"><span class="dot" id="notes-dot"></span><span id="notes-status">loading...</span><span style="margin-left:auto" id="notes-path"></span></div>
+      </div>
+    </div>
   </div>
   <aside class="rail">
     <div class="tiles">
@@ -225,7 +246,7 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Research:'researchview', Reports:'reportsview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Research:'researchview', Reports:'reportsview', Notes:'notesview'};
   var curView='Flow', pollTimer=null;
   function setView(name){
     if(name!=='Flow' && !PANELS[name]) return;
@@ -242,6 +263,7 @@
     else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
     else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
     else if(name==='Reports'){ repStatus(''); }
+    else if(name==='Notes'){ loadNotes(); }
   }
   (function(){ var tabs=document.querySelectorAll('.tabs span');
     for(var i=0;i<tabs.length;i++){ (function(sp){ sp.onclick=function(){ setView(sp.textContent.trim()); }; })(tabs[i]); } })();
@@ -347,13 +369,57 @@
   // ---- Findings tab ----------------------------------------------------
   function loadFindings(){ fetch('findings',{cache:'no-store'}).then(function(r){return r.json();}).then(renderFindings)
     .catch(function(){ var b=document.getElementById('find-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
-  function renderFindings(d){ var box=document.getElementById('find-list'); if(!box) return;
-    var fs=(d.findings||d.rows||d||[]);
-    if(!fs.length){ box.innerHTML='<div class="empty">no findings yet - run some recon from the Targets tab</div>'; return; }
-    box.innerHTML=fs.map(function(f){ var sev=String(f.severity||'info').toLowerCase();
-      var meta=[f.host,(f.kev?'KEV':''),(f.attack||f.technique||''),(f.cve||'')].filter(Boolean).join('  -  ');
-      return '<div class="find sev-'+sev+'"><div class="ttl">'+(f.title||f.name||'finding')+'</div><div class="meta">'+sev+(meta?'  -  '+meta:'')+'</div></div>'; }).join('');
+  var FINDINGS=[], findOpen={};
+  function findKey(f){ return (f.host||'')+'|'+(f.title||f.name||'')+'|'+(f.cve||''); }
+  function nextSteps(f){
+    var sev=String(f.severity||'info').toLowerCase(), s=[];
+    if(f.kev) s.push('In CISA KEV - known exploited in the wild. Top priority; verify the affected version applies.');
+    if(sev==='critical'||sev==='high') s.push('Confirm it is genuinely reachable and the vulnerable path/version actually applies - template scanners produce false positives.');
+    if(f.cve) s.push('Read the vendor advisory for '+f.cve+' and check for a patch or mitigation.');
+    if(typeof f.epss==='number') s.push('EPSS '+Number(f.epss).toFixed(2)+' - higher means more likely to be exploited soon; use it to rank.');
+    s.push('Record the outcome in Notes and re-run this check after remediation to confirm it is closed.');
+    if(sev==='info'||sev==='low') s.push('Low priority on its own - note it and move on unless it chains with something more serious.');
+    return s;
   }
+  function findDetail(f){
+    function row(k,v){ return v?('<div class="row"><span class="k">'+k+'</span>'+v+'</div>'):''; }
+    var r=row('host',f.host)+row('module',f.module)+row('severity',f.severity)+row('cve',f.cve)
+      +row('kev',f.kev?'yes (CISA KEV)':'')+row('epss',(typeof f.epss==='number')?Number(f.epss).toFixed(2):'')
+      +row('att&ck',f.attack)+row('matched',f.evidence_ref)
+      +row('time',f.ts?new Date(f.ts*1000).toLocaleString():'');
+    var steps=nextSteps(f).map(function(x){return '<li>'+x+'</li>';}).join('');
+    return '<div class="detail">'+r+'<div class="steps"><h5>Suggested next steps</h5><ul>'+steps+'</ul></div></div>';
+  }
+  function renderFindings(d){ var box=document.getElementById('find-list'); if(!box) return;
+    var fs=(d.findings||d.rows||d||[]); FINDINGS=fs;
+    if(!fs.length){ box.innerHTML='<div class="empty">no findings yet - run a scan (e.g. Web scan / nuclei) from the Targets tab</div>'; return; }
+    box.innerHTML=fs.map(function(f){ var sev=String(f.severity||'info').toLowerCase();
+      var k=findKey(f), open=!!findOpen[k];
+      var meta=[f.host,(f.kev?'KEV':''),(f.attack||f.technique||''),(f.cve||'')].filter(Boolean).join('  -  ');
+      return '<div class="find clk sev-'+sev+(open?' open':'')+'" data-k="'+encodeURIComponent(k)+'">'
+        +'<div class="ttl">'+(f.title||f.name||'finding')+'</div>'
+        +'<div class="meta">'+sev+(meta?'  -  '+meta:'')+(open?'':'   (click for detail + next steps)')+'</div>'
+        +(open?findDetail(f):'')+'</div>'; }).join('');
+    var items=box.querySelectorAll('.find.clk');
+    for(var j=0;j<items.length;j++){ (function(el){ el.onclick=function(){
+      var k=decodeURIComponent(el.getAttribute('data-k')); findOpen[k]=!findOpen[k]; renderFindings({findings:FINDINGS}); }; })(items[j]); }
+  }
+
+  // ---- Notes tab (living, persisted notepad) ---------------------------
+  var notesTimer=null, notesLoaded=false;
+  function notesStatus(msg,cls){ var st=document.getElementById('notes-status'), dt=document.getElementById('notes-dot');
+    if(st) st.textContent=msg; if(dt) dt.className='dot'+(cls?(' '+cls):''); }
+  function loadNotes(){ if(!hasTok()){ notesStatus('connect to a live server first','err'); return; }
+    fetch('notes',{headers:{'Authorization':'Bearer '+window.EREBUS_TOKEN},cache:'no-store'})
+      .then(function(r){return r.json();}).then(function(j){ var ta=document.getElementById('notes-ta');
+        if(ta && !notesLoaded){ ta.value=j.text||''; } notesLoaded=true;
+        var pe=document.getElementById('notes-path'); if(pe) pe.textContent=j.path||'';
+        notesStatus('saved','saved'); }).catch(function(){ notesStatus('load failed','err'); }); }
+  function saveNotes(){ if(!hasTok()){ notesStatus('not connected','err'); return; }
+    var ta=document.getElementById('notes-ta'); if(!ta) return; notesStatus('saving...','dirty');
+    apiPost('notes',{text:ta.value}).then(function(res){ notesStatus(res.ok?'saved':'save failed', res.ok?'saved':'err'); }); }
+  (function(){ var ta=document.getElementById('notes-ta'); if(!ta) return;
+    ta.addEventListener('input',function(){ notesStatus('unsaved...','dirty'); clearTimeout(notesTimer); notesTimer=setTimeout(saveNotes, 900); }); })();
 
   // ---- Research tab ----------------------------------------------------
   function loadResearch(){ fetch('research',{cache:'no-store'}).then(function(r){return r.json();}).then(renderResearch)

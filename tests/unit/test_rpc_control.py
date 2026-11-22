@@ -141,3 +141,14 @@ def test_research_endpoint_shape():
     with _client(_seed()) as c:
         d = c.get("/research").json()
         assert "afl_available" in d and isinstance(d["crashes"], list)
+
+
+def test_notes_roundtrip_token_guarded(tmp_path, monkeypatch):
+    monkeypatch.setenv("EREBUS_NOTES", str(tmp_path / "notes.md"))
+    with _client(Framework()) as c:
+        assert c.get("/notes").status_code == 401       # read needs the token
+        assert c.post("/notes", json={"text": "x"}).status_code == 401
+        assert c.get("/notes", headers=AUTH).json()["text"] == ""   # empty to start
+        r = c.post("/notes", json={"text": "# notes\n- item"}, headers=AUTH).json()
+        assert r["ok"] and r["bytes"] > 0
+        assert c.get("/notes", headers=AUTH).json()["text"] == "# notes\n- item"

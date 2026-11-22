@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -93,6 +94,10 @@ def create_app(framework: Any, token: str | None = None,
 
     def _stream_token_ok(conn: Any) -> bool:  # WebSocket or Request; both have query_params
         return secrets.compare_digest(conn.query_params.get("token", ""), token)
+
+    def _notes_path() -> Path:
+        env = os.environ.get("EREBUS_NOTES")
+        return Path(env) if env else (Path.home() / ".erebus" / "notes.md")
 
     def _graph() -> dict[str, Any]:
         return build_graph(framework.loader, framework.store, framework.config)
@@ -249,6 +254,26 @@ def create_app(framework: Any, token: str | None = None,
         framework.events.publish(Event("scope.changed",
                                        {"action": "mode", "enabled": enabled}))
         return {"ok": True, "enabled": framework.scope.enabled, "rules": framework.scope.show()}
+
+    @app.get("/notes", dependencies=[Depends(require_token)])
+    async def notes_get() -> dict[str, Any]:
+        path = _notes_path()
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        return {"text": text, "path": str(path)}
+
+    @app.post("/notes", dependencies=[Depends(require_token)])
+    async def notes_set(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        text = str(payload.get("text", ""))
+        path = _notes_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not write notes: {exc}") from None
+        return {"ok": True, "bytes": len(text.encode("utf-8")), "path": str(path)}
 
     @app.websocket("/ws/events")
     async def ws_events(ws: WebSocket) -> None:
