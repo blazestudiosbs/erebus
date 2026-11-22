@@ -190,6 +190,15 @@ def _fuzz(args: argparse.Namespace) -> int:
     return 0
 
 
+def _tui(args: argparse.Namespace) -> int:
+    """Launch the live terminal cockpit over a datastore."""
+    from .core.framework import Framework
+    from .ui.tui import run
+
+    run(Framework(store_path=args.store))
+    return 0
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
@@ -277,6 +286,10 @@ def main() -> None:
     fz.add_argument("--timeout", type=float, default=60.0, help="fuzzing duration seconds")
     fz.add_argument("extra", nargs="*", help="extra fuzzer flags (placed before -- target)")
 
+    tui = sub.add_parser("tui",
+                         help="live terminal cockpit (targets/findings/sessions/jobs)")
+    tui.add_argument("--store", default=":memory:", help="framework datastore to view")
+
     args = p.parse_args()
     if args.cmd == "intel":
         _intel(args)
@@ -288,6 +301,8 @@ def main() -> None:
         raise SystemExit(_sandbox(args))
     elif args.cmd == "fuzz":
         raise SystemExit(_fuzz(args))
+    elif args.cmd == "tui":
+        raise SystemExit(_tui(args))
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve
