@@ -79,3 +79,10 @@ def test_ws_requires_token():
     with _client(Framework()) as c, pytest.raises(WebSocketDisconnect):
         with c.websocket_connect("/ws/events") as ws:  # no token
             ws.receive_json()
+
+
+def test_dashboard_injects_token_and_ws_uses_it():
+    with _client(Framework()) as c:
+        html = c.get("/").text
+    assert "window.EREBUS_TOKEN=" in html   # server injects the token
+    assert "?token=" in html                # the dashboard's WS carries it
