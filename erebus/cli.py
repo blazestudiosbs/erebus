@@ -199,6 +199,8 @@ def main() -> None:
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve
+        if args.edition == "live":
+            raise SystemExit("error: the live (amnesic) edition does not serve the dashboard")
         fw = Framework(store_path=args.store, edition=args.edition, log_path=args.log,
                        journal_dir=args.journal_dir, evidence_dir=args.evidence_dir)
         print(f"Erebus RPC → http://{args.host}:{args.port}  "
