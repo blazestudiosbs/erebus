@@ -123,6 +123,40 @@ def _report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _sandbox(args: argparse.Namespace) -> int:
+    """Detonate a local (untrusted) script inside the isolated sandbox."""
+    from pathlib import Path
+
+    from .sandbox import SandboxError, SandboxSpec, SandboxUnavailable, open_sandbox
+
+    path = Path(args.file).expanduser()
+    if not path.is_file():
+        print(f"error: no such file: {args.file}")
+        return 2
+    try:
+        sb = open_sandbox()
+    except SandboxUnavailable as exc:
+        print(f"error: {exc}")
+        return 2
+    spec = SandboxSpec(artifact=str(path), interpreter=args.interpreter, image=args.image,
+                       timeout=args.timeout, network=args.network, argv=args.poc_args or [])
+    print(f"detonating {path.name} in the {sb.name} sandbox "
+          f"(network {'on' if args.network else 'off'}, timeout {args.timeout:.0f}s) ...")
+    try:
+        res = sb.run(spec)
+    except SandboxError as exc:
+        print(f"error: {exc}")
+        return 2
+    print(f"exit={res.rc} timed_out={res.timed_out}")
+    if res.stdout:
+        print("--- stdout ---")
+        print(res.stdout.rstrip())
+    if res.stderr:
+        print("--- stderr ---")
+        print(res.stderr.rstrip())
+    return 124 if res.timed_out else res.rc
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
@@ -182,6 +216,18 @@ def main() -> None:
     vdel = vsub.add_parser("delete", help="remove a key")
     vdel.add_argument("name")
 
+    sbx = sub.add_parser("sandbox",
+                         help="detonate a local PoC/script in an isolated sandbox")
+    sbx.add_argument("--file", required=True, help="path to the (untrusted) script to run")
+    sbx.add_argument("--interpreter", default="python3",
+                     help="interpreter inside the sandbox (python3, bash, ...)")
+    sbx.add_argument("--image", default="python:3.12-slim", help="container image")
+    sbx.add_argument("--network", action="store_true",
+                     help="allow network access (default: fully isolated)")
+    sbx.add_argument("--timeout", type=float, default=30.0,
+                     help="seconds before the run is killed")
+    sbx.add_argument("poc_args", nargs="*", help="arguments passed to the script")
+
     args = p.parse_args()
     if args.cmd == "intel":
         _intel(args)
@@ -189,6 +235,8 @@ def main() -> None:
         raise SystemExit(_vault(args))
     elif args.cmd == "report":
         raise SystemExit(_report(args))
+    elif args.cmd == "sandbox":
+        raise SystemExit(_sandbox(args))
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve
