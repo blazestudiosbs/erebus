@@ -1,48 +1,84 @@
 # Erebus
 
-A modular, Metasploit-style security **research & testing** framework — for your own lab and authorized targets. Built to grow into a full attack-research platform (recon → intel → modules → sessions → reporting) with a 3D web dashboard, an AI copilot, and its own live-USB distro. See the design docs for the full picture.
+A modular, Metasploit-style security **research & testing** framework — for your
+own lab and targets you have written permission to test. Pure-stdlib core, a
+console, a live web dashboard, reporting, an isolation sandbox, a fuzzing/triage
+bench, and an LLM copilot.
 
-> **Authorized testing only.** Use Erebus only against systems you own or have **written permission** to test. The scope gate ships **enabled and deny-all** — you must explicitly allow your lab ranges. Using this tool against systems you don't control is illegal in most jurisdictions.
-
-## Status
-
-Early scaffold. Working today (M0–M3):
-- `core/` engine — event bus, typed options, module base class, loader, **scope/RoE gate**, SQLite datastore, job runner.
-- `ereconsole` — interactive console (`search` / `use` / `set` / `run` / `scope` / `hosts` / `services` / `findings`).
-- `modules/auxiliary/scanner/portscan` — a pure-stdlib TCP connect scanner (the reference module).
-
-Roadmap (M4+): intel ingest (NVD/KEV/EPSS), tool wrappers (nmap/nuclei/searchsploit), RPC + the 3D dashboard, reporting, research/exploit-dev, distro.
+> **Authorized testing only.** Use Erebus only against systems you own or have
+> **written permission** to test. The scope gate ships **enabled and deny-all** —
+> you must explicitly allow your lab ranges. Using this against systems you don't
+> control is illegal in most jurisdictions.
 
 ## Quickstart
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"          # or ".[rpc,report,connectors]" for the optional bits
 
-ereconsole
+ereconsole                        # interactive console
+#   scope allow 192.168.56.0/24
+#   use auxiliary/scanner/portscan ; set RHOSTS 192.168.56.10 ; run
+
+erebus console --serve            # console + live 3D dashboard at 127.0.0.1:8777
 ```
 
-In the console:
+## Command surface
 
-```
-erebus > scope allow 127.0.0.0/8
-erebus > use auxiliary/scanner/portscan
-erebus auxiliary(scanner/portscan) > set RHOSTS 127.0.0.1
-erebus auxiliary(scanner/portscan) > set PORTS 1-1024
-erebus auxiliary(scanner/portscan) > run
-```
+| Command | What it does |
+|---|---|
+| `ereconsole` / `erebus console` | Interactive console (`search`/`use`/`set`/`run`/`sessions`/`ask`/`scope`/…). `--serve` co-hosts the dashboard. |
+| `erebus rpc` | Serve the authenticated control API + 3D dashboard (`--token`, `--cors-origin`). |
+| `erebus intel` | CVE intel — NVD/KEV/EPSS ingest, lookup, correlate. |
+| `erebus report` | Engagement report → Markdown, HTML, or **PDF** (ATT&CK grouped by tactic). |
+| `erebus vault` | Manage connector API keys (OS keychain). |
+| `erebus sandbox` | Detonate a local PoC in an isolated container (never on the host). |
+| `erebus fuzz` | Fuzz an authorized lab target and triage the crashes. |
+| `erebus tui` | Live terminal cockpit (targets/findings/sessions/jobs). |
 
-## Develop
+## Modules (`search auxiliary`)
+
+- `scanner/portscan` — stdlib TCP connect scan · `scanner/nmap`, `scanner/nuclei`,
+  `gather/searchsploit` — run the real tools and import results
+- `import/nmap`, `import/nuclei`, `import/searchsploit` — offline file importers
+- `gather/shodan_search` — passive Shodan (key from the vault)
+- `handler/reverse_tcp`, `handler/reverse_tcp_multi` — catch one / many in-scope shells
+
+Every module runs through `Framework.run()`, which enforces the scope gate.
+
+## Subsystems
+
+`core/` (events, options, modules, loader, scope gate, datastore, sessions) ·
+`lib/` (no-shell tool runner) · `intel/` (NVD/KEV/EPSS + EDB) ·
+`connectors/` (vault, Shodan, LLM) · `reporting/` (activity log, journal,
+evidence, MD/HTML/PDF) · `rpc/` (control API + dashboard) ·
+`sandbox/` (container isolation) · `research/` (fuzz orchestration + crash triage) ·
+`copilot.py` ("Ask Erebus") · `ui/` (TUI cockpit) · `distro/` (live-build scaffold)
+
+## Editions
+
+`Framework(edition="workstation")` keeps logs, journal, evidence, the vault, and
+serves the dashboard. `edition="live"` is amnesic — no logs on disk, memory-only
+vault, and it refuses `report`, `vault`, and the dashboard.
+
+## Safety
+
+Deny-all scope gate before every module run · secrets only in the vault (never in
+code/config/logs) · untrusted PoCs only ever run in the sandbox (no host-exec
+fallback) · connectors refuse offline/Tor and are https-only · the research bench
+is find + triage only (no exploit generation).
+
+## Development
 
 ```bash
-pip install -e ".[dev]"
-ruff check . && mypy erebus/core && pytest
+pytest -q && ruff check . && mypy erebus
+pre-commit install          # run the same gates on every commit
 ```
+CI runs ruff, `mypy erebus`, and pytest on Python 3.11–3.13. The code targets
+Python 3.9+ (`requires-python`); the exact floor is an open project decision.
 
-## Writing a module
+## License & docs
 
-Copy `erebus/modules/auxiliary/scanner/portscan.py`: subclass `Auxiliary` (or `Exploit`/`Post`), declare `name`, `options` (typed `OptionSpec`s), and `attack` (ATT&CK ids), then implement `run()` using `self.add_service()`, `self.add_finding()`, and `self.good()/info_()/warn()`.
-
-## License
-
-Apache-2.0. See `LICENSE`.
+Apache-2.0 (`LICENSE`). Coordinated disclosure for bugs *in Erebus* →
+[`SECURITY.md`](SECURITY.md); contribution norms → [`CONTRIBUTING.md`](CONTRIBUTING.md)
+and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).

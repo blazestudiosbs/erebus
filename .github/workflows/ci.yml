@@ -16,5 +16,5 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: mypy erebus/core
+      - run: mypy erebus
       - run: pytest

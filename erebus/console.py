@@ -8,6 +8,7 @@ import shlex
 
 from .core import events as ev
 from .core.framework import Framework
+from .core.module_base import Module
 from .core.options import OptionError
 from .core.scope import ScopeError
 
@@ -31,7 +32,7 @@ class EreConsole(cmd.Cmd):
     def __init__(self, framework: Framework | None = None) -> None:
         super().__init__()
         self.fw = framework if framework is not None else Framework()
-        self.module = None
+        self.module: Module | None = None
         self.fw.events.subscribe(ev.LOG, self._on_log)
         self._refresh_prompt()
         self._banner()
