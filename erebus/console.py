@@ -1,6 +1,7 @@
 """ereconsole — the interactive REPL (the command grammar everything else reuses)."""
 from __future__ import annotations
 
+import argparse
 import cmd
 import os
 import shlex
@@ -27,9 +28,9 @@ def col(s: str, key: str) -> str:
 class EreConsole(cmd.Cmd):
     prompt = "erebus > "
 
-    def __init__(self) -> None:
+    def __init__(self, framework: Framework | None = None) -> None:
         super().__init__()
-        self.fw = Framework()
+        self.fw = framework if framework is not None else Framework()
         self.module = None
         self.fw.events.subscribe(ev.LOG, self._on_log)
         self._refresh_prompt()
@@ -213,8 +214,59 @@ class EreConsole(cmd.Cmd):
         return False
 
 
-def main() -> None:
+def add_console_args(p: argparse.ArgumentParser) -> None:
+    """Register the console's options on ``p`` (shared by ereconsole and `erebus console`)."""
+    p.add_argument("--store", default=":memory:", metavar="PATH",
+                   help="framework datastore file; persists runs (default: in-memory)")
+    p.add_argument("--edition", choices=["workstation", "live"], default="workstation",
+                   help="live keeps no logs/journal/evidence/vault on disk")
+    p.add_argument("--log", default=None, metavar="PATH",
+                   help="append every event to this JSONL activity log (workstation only)")
+    p.add_argument("--journal-dir", default=None, metavar="DIR",
+                   help="write a JSONL transcript per session here (workstation only)")
+    p.add_argument("--evidence-dir", default=None, metavar="DIR",
+                   help="store hashed evidence artifacts here (workstation only)")
+    p.add_argument("--serve", action="store_true",
+                   help="also serve the live 3D dashboard, sharing THIS console's state")
+    p.add_argument("--host", default="127.0.0.1", help="dashboard bind host (with --serve)")
+    p.add_argument("--port", type=int, default=8777, help="dashboard port (with --serve)")
+
+
+def build_framework(store: str = ":memory:", edition: str = "workstation",
+                    log: str | None = None, journal_dir: str | None = None,
+                    evidence_dir: str | None = None) -> Framework:
+    """Construct the console's Framework from the console options."""
+    return Framework(store_path=store, edition=edition, log_path=log,
+                     journal_dir=journal_dir, evidence_dir=evidence_dir)
+
+
+def launch(store: str = ":memory:", edition: str = "workstation", log: str | None = None,
+           journal_dir: str | None = None, evidence_dir: str | None = None,
+           serve: bool = False, host: str = "127.0.0.1", port: int = 8777) -> None:
+    """Build the framework, optionally co-host the dashboard, and run the REPL."""
+    fw = build_framework(store, edition, log, journal_dir, evidence_dir)
+    server = None
+    if serve:
+        from .rpc.server import serve_in_thread
+        try:
+            server, _ = serve_in_thread(fw, host=host, port=port)
+            print(col(f"◆ dashboard → http://{host}:{port}  "
+                      f"(live; shares this console)", "accent"))
+        except RuntimeError as exc:
+            print(col(f"[!] dashboard not started: {exc}", "warn"))
     try:
-        EreConsole().cmdloop()
+        EreConsole(framework=fw).cmdloop()
     except KeyboardInterrupt:
         print()
+    finally:
+        if server is not None:
+            server.should_exit = True
+
+
+def main(argv: list[str] | None = None) -> None:
+    p = argparse.ArgumentParser(prog="ereconsole",
+                                description="Erebus interactive console (authorized use only)")
+    add_console_args(p)
+    ns = p.parse_args(argv)
+    launch(store=ns.store, edition=ns.edition, log=ns.log, journal_dir=ns.journal_dir,
+           evidence_dir=ns.evidence_dir, serve=ns.serve, host=ns.host, port=ns.port)

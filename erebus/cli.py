@@ -7,7 +7,8 @@ import sys
 from typing import Any
 
 from . import __version__
-from .console import main as console_main
+from .console import add_console_args
+from .console import launch as console_launch
 from .intel import default_db_path
 from .intel import ingest as intel_ingest
 from .intel.db import IntelStore
@@ -127,7 +128,8 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
     sub = p.add_subparsers(dest="cmd")
-    sub.add_parser("console", help="launch the interactive console (ereconsole)")
+    consolep = sub.add_parser("console", help="launch the interactive console (ereconsole)")
+    add_console_args(consolep)
 
     intel = sub.add_parser("intel", help="CVE intel (NVD/KEV/EPSS/EDB)")
     intel.add_argument("--db", default=None, help="intel sqlite path")
@@ -200,8 +202,12 @@ def main() -> None:
             print("note: the live edition keeps no logs; "
                   "--log/--journal-dir/--evidence-dir were ignored")
         serve(fw, host=args.host, port=args.port)
+    elif args.cmd == "console":
+        console_launch(store=args.store, edition=args.edition, log=args.log,
+                       journal_dir=args.journal_dir, evidence_dir=args.evidence_dir,
+                       serve=args.serve, host=args.host, port=args.port)
     else:
-        console_main()
+        console_launch()
 
 
 if __name__ == "__main__":
