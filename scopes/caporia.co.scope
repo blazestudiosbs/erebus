@@ -1,0 +1,51 @@
+# ============================================================
+#  Erebus scope - caporia.co
+#  Modeled on a HackerOne-style bug-bounty program scope.
+#  Owner-authorized: the operator owns caporia.co and approves testing.
+#
+#  Load it:   erebus console --serve --scope scopes/caporia.co.scope
+#             (or paste / upload it in the dashboard: Targets > Scope)
+#  Format:    one target per line; IP, CIDR, hostname, or *.wildcard
+#             '#' starts a comment. The file is an ALLOWLIST - anything
+#             not listed is out of scope and will be refused.
+# ============================================================
+
+# ---------------------------------------------------------------
+#  IN SCOPE
+# ---------------------------------------------------------------
+# Primary domain and every subdomain (wildcard = apex + any depth).
+caporia.co
+*.caporia.co
+
+# Explicit service hosts (optional - the wildcard already covers these;
+# uncomment if you later tighten the wildcard to specific hosts).
+# www.caporia.co
+# api.caporia.co
+# app.caporia.co
+# staging.caporia.co
+# dev.caporia.co
+
+# Owned lab / infrastructure (set these to your REAL ranges, then uncomment).
+# 10.10.0.0/24          # home lab segment
+# 192.168.56.0/24       # VM host-only network
+
+# ---------------------------------------------------------------
+#  OUT OF SCOPE   (documented here; the allowlist simply never allows them)
+# ---------------------------------------------------------------
+# - Any host not under caporia.co or the lab ranges above.
+# - Third-party / managed platforms, even on a caporia.co CNAME, e.g. a
+#   subdomain pointing at *.myshopify.com, *.vercel.app, *.herokuapp.com,
+#   *.github.io, *.cloudfront.net, or SaaS dashboards (Stripe, SendGrid,
+#   Mailgun, status pages). You don't own that stack - do not test it.
+#   NOTE: *.caporia.co above WILL match such a subdomain by name, so if one
+#   exists, remove the wildcard and list only the hosts you control.
+
+# ---------------------------------------------------------------
+#  RULES OF ENGAGEMENT   (notes - you enforce these, not the file)
+# ---------------------------------------------------------------
+# - Authorized testing only. You own caporia.co and approve this scope.
+# - No denial-of-service or stress testing; no social engineering; no physical.
+# - Test only your own accounts and data; never pivot to third parties.
+# - Passive OSINT (Shodan, exploit search) sends nothing to the target and
+#   needs no scope; active modules (portscan / nmap / nuclei) are gated to
+#   the IN SCOPE entries above.
