@@ -26,16 +26,40 @@ def col(s: str, key: str) -> str:
     return f"{_C.get(key, '')}{s}{_C['reset']}"
 
 
+BANNER = """
+███████╗██████╗ ███████╗██████╗ ██╗   ██╗███████╗
+██╔════╝██╔══██╗██╔════╝██╔══██╗██║   ██║██╔════╝
+█████╗  ██████╔╝█████╗  ██████╔╝██║   ██║███████╗
+██╔══╝  ██╔══██╗██╔══╝  ██╔══██╗██║   ██║╚════██║
+███████╗██║  ██║███████╗██████╔╝╚██████╔╝███████║
+╚══════╝╚═╝  ╚═╝╚══════╝╚═════╝  ╚═════╝ ╚══════╝"""
+
+
+def print_banner(fw: Framework) -> None:
+    """The startup splash: the Erebus wordmark, then a one-line status."""
+    counts: dict[str, int] = {}
+    for key, _cls in fw.loader.all():
+        t = key.split("/", 1)[0]
+        counts[t] = counts.get(t, 0) + 1
+    summary = ", ".join(f"{v} {k}" for k, v in sorted(counts.items())) or "no modules"
+    print(col(BANNER, "accent"))
+    print(col("     primordial dark · authorized security-research framework", "dim"))
+    print(col(f"     modules: {summary}  ·  scope gate ENABLED (deny-all until configured)",
+              "dim"))
+    print()
+
+
 class EreConsole(cmd.Cmd):
     prompt = "erebus > "
 
-    def __init__(self, framework: Framework | None = None) -> None:
+    def __init__(self, framework: Framework | None = None, banner: bool = True) -> None:
         super().__init__()
         self.fw = framework if framework is not None else Framework()
         self.module: Module | None = None
         self.fw.events.subscribe(ev.LOG, self._on_log)
         self._refresh_prompt()
-        self._banner()
+        if banner:
+            self._banner()
 
     # --- presentation ---
     def _banner(self) -> None:
@@ -329,6 +353,7 @@ def launch(store: str = ":memory:", edition: str = "workstation", log: str | Non
            lab: bool = False) -> None:
     """Build the framework, optionally co-host the dashboard, and run the REPL."""
     fw = build_framework(store, edition, log, journal_dir, evidence_dir)
+    print_banner(fw)
     if scope_file:
         fw.scope.load(scope_file)
         print(col(f"  scope: loaded {len(fw.scope.show())} rule(s) from {scope_file}", "dim"))
@@ -347,7 +372,7 @@ def launch(store: str = ":memory:", edition: str = "workstation", log: str | Non
         except RuntimeError as exc:
             print(col(f"[!] dashboard not started: {exc}", "warn"))
     try:
-        EreConsole(framework=fw).cmdloop()
+        EreConsole(framework=fw, banner=False).cmdloop()
     except KeyboardInterrupt:
         print()
     finally:
