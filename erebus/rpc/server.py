@@ -16,7 +16,7 @@ import json
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional  # noqa: UP035
 
 try:
     from fastapi import (
@@ -83,7 +83,10 @@ def create_app(framework: Any, token: str | None = None,
         allow_methods=["*"], allow_headers=["*"],
     )
 
-    def require_token(authorization: str | None = Header(default=None)) -> None:
+    # NB: FastAPI evaluates these parameter annotations at runtime, and Python 3.9 can't
+    # evaluate `str | None` / `dict[...]` there — so the two FastAPI-introspected params
+    # below use typing.Optional/Dict on purpose (don't let pyupgrade rewrite them).
+    def require_token(authorization: Optional[str] = Header(default=None)) -> None:  # noqa: UP045, UP007
         expected = f"Bearer {token}"
         if not authorization or not secrets.compare_digest(authorization, expected):
             raise HTTPException(status_code=401, detail="missing or invalid bearer token")
@@ -153,7 +156,7 @@ def create_app(framework: Any, token: str | None = None,
         return {"sessions": _rows(framework.store.sessions())}
 
     @app.post("/jobs", dependencies=[Depends(require_token)])
-    async def start_job(payload: dict[str, Any]) -> dict[str, Any]:
+    async def start_job(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
         key = str(payload.get("module", "")).strip()
         options = payload.get("options") or {}
         if not key:
