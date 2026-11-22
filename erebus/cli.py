@@ -200,6 +200,41 @@ def _tui(args: argparse.Namespace) -> int:
     return 0
 
 
+def _update(args: argparse.Namespace) -> int:
+    """Pull the latest Erebus from git, then refresh deps and nuclei templates.
+
+    Erebus is an editable install, so pulled code is live immediately; the
+    dependency refresh only matters when pyproject changed. Uses the configured
+    git origin and the current Python/venv.
+    """
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    if not (root / ".git").is_dir():
+        print(f"error: {root} is not a git checkout; `update` needs a git/editable install")
+        return 2
+    print(f"[update] git pull --ff-only  ({root})")
+    if subprocess.run(["git", "-C", str(root), "pull", "--ff-only"]).returncode != 0:  # noqa: S603,S607
+        print("[update] pull failed - local changes or not a fast-forward; "
+              "resolve in the repo and retry")
+        return 1
+    if not args.no_deps:
+        print("[update] refreshing dependencies: pip install -e .[all]")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-e", ".[all]"],  # noqa: S603
+                       cwd=str(root))
+    if not args.no_templates and shutil.which("nuclei"):
+        print("[update] nuclei -update-templates")
+        subprocess.run(["nuclei", "-update-templates"])  # noqa: S603,S607
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],  # noqa: S603,S607
+                          capture_output=True, text=True).stdout.strip()
+    print(f"[update] done - now on {head}. "
+          "Restart `erebus console --serve` to load the changes.")
+    return 0
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
@@ -295,6 +330,13 @@ def main() -> None:
                          help="live terminal cockpit (targets/findings/sessions/jobs)")
     tui.add_argument("--store", default=":memory:", help="framework datastore to view")
 
+    upd = sub.add_parser("update",
+                         help="pull the latest Erebus from git and refresh deps/templates")
+    upd.add_argument("--no-deps", action="store_true",
+                     help="skip the dependency refresh (code-only update)")
+    upd.add_argument("--no-templates", action="store_true",
+                     help="skip the nuclei template refresh")
+
     args = p.parse_args()
     if args.cmd == "intel":
         _intel(args)
@@ -308,6 +350,8 @@ def main() -> None:
         raise SystemExit(_fuzz(args))
     elif args.cmd == "tui":
         raise SystemExit(_tui(args))
+    elif args.cmd == "update":
+        raise SystemExit(_update(args))
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve

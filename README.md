@@ -39,6 +39,21 @@ It is idempotent, skips anything already present, and ends with a tool check so
 you can see what landed. `".[all]"` is the runtime extra (FastAPI/uvicorn,
 keyring, fpdf2, requests); `".[dev]"` adds the test and lint tooling.
 
+### Updating
+
+Erebus is an editable install, so pulling new code is live immediately:
+
+```bash
+erebus update                     # git pull --ff-only, then refresh deps + nuclei templates
+#   erebus update --no-deps       # code-only (skip the pip refresh)
+#   erebus update --no-templates  # skip the nuclei template refresh
+```
+
+It uses the configured git origin and the current venv, and refuses a
+non-fast-forward pull so it never clobbers local edits. On a private repo the
+box needs read access (a PAT or a read-only deploy key). Restart
+`erebus console --serve` afterward to load the changes.
+
 ## Command surface
 
 | Command | What it does |
