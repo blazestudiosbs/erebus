@@ -23,6 +23,22 @@ ereconsole                        # interactive console
 erebus console --serve            # console + live 3D dashboard at 127.0.0.1:8777
 ```
 
+### Full install in a VM
+
+To set up a VM with every runtime dependency **and** the external tools the
+modules call (nmap, nuclei, searchsploit/Exploit-DB, AFL++), run the
+provisioner from the repo root on a fresh Debian/Ubuntu/Kali (or macOS) box:
+
+```bash
+./scripts/provision.sh            # creates .venv, installs ".[all]" + the toolchain
+#   EREBUS_SKIP="nuclei afl" ./scripts/provision.sh   # skip specific tools
+#   EREBUS_VENV=~/erebus-venv     ./scripts/provision.sh   # venv elsewhere
+```
+
+It is idempotent, skips anything already present, and ends with a tool check so
+you can see what landed. `".[all]"` is the runtime extra (FastAPI/uvicorn,
+keyring, fpdf2, requests); `".[dev]"` adds the test and lint tooling.
+
 ## Command surface
 
 | Command | What it does |
