@@ -8,7 +8,7 @@ HTML has inline CSS and no scripts or external assets. It has dark and light the
 print CSS that forces a light page, so a browser's "Save as PDF" gives a clean PDF.
 Everything taken from the datastore is escaped: findings can originate in imported files.
 
-TODO(decision): direct PDF output needs a third-party library; use the browser for now.
+Direct PDF output is available via ``render_pdf`` (the optional ``fpdf2`` dependency).
 TODO(decision): the heatmap lists techniques by id only. Grouping by tactic needs the MITRE
 ATT&CK dataset, which is not bundled.
 """
@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 from erebus.core import events as ev
 
 from . import evidence as evmod
+from .attack import group_by_tactic
 
 if TYPE_CHECKING:
     from erebus.core.datastore import Store
@@ -210,8 +211,10 @@ def render_markdown(data: ReportData, title: str = "Engagement report") -> str:
     if data.techniques:
         parts.append("Count = findings tagged with the technique + module runs that declare it.")
         parts.append("")
-        parts.append(_md_table(["Technique", "Count"],
-                               [[t, n] for t, n in data.techniques.items()]))
+        rows = [[tactic, tech, n]
+                for tactic, techs in group_by_tactic(data.techniques)
+                for tech, n in techs]
+        parts.append(_md_table(["Tactic", "Technique", "Count"], rows))
     else:
         parts.append("No ATT&CK techniques recorded.")
 
@@ -344,9 +347,11 @@ def render_html(data: ReportData, title: str = "Engagement report", theme: str =
         peak = max(data.techniques.values())
         out.append('<p class="muted">Count = findings tagged with the technique + module runs '
                    "that declare it.</p>")
-        out.append('<div class="grid">' + "".join(
-            f'<div class="cell" style="{_heat_style(n, peak)}"><b>{_h(t)}</b>{n}</div>'
-            for t, n in data.techniques.items()) + "</div>")
+        for tactic, techs in group_by_tactic(data.techniques):
+            out.append(f'<div class="muted" style="margin:10px 0 4px">{_h(tactic)}</div>')
+            out.append('<div class="grid">' + "".join(
+                f'<div class="cell" style="{_heat_style(n, peak)}"><b>{_h(t)}</b>{n}</div>'
+                for t, n in techs) + "</div>")
     else:
         out.append('<p class="muted">No ATT&amp;CK techniques recorded.</p>')
 
@@ -370,6 +375,136 @@ def write_report(path: str | Path, content: str, overwrite: bool = False) -> Pat
     flags = os.O_WRONLY | os.O_CREAT | (os.O_TRUNC if overwrite else os.O_EXCL)
     fd = os.open(p, flags, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    os.chmod(p, 0o600)
+    return p
+
+
+# -------------------------------------------------------------------------- PDF
+
+_PDF_HINT = 'PDF output needs fpdf2. Install it with: pip install -e ".[report]"'
+
+
+def _pdf_safe(x: object) -> str:
+    """Core PDF fonts are Latin-1; replace anything they can't encode (report text is ~ASCII)."""
+    return str(x if x is not None else "").encode("latin-1", "replace").decode("latin-1")
+
+
+def render_pdf(data: ReportData, title: str = "Engagement report") -> bytes:
+    """Render the report as PDF bytes. Requires the optional ``fpdf2`` dependency."""
+    try:
+        from fpdf import FPDF
+        from fpdf.enums import XPos, YPos
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(_PDF_HINT) from exc
+
+    sev = data.severity_counts()
+    by_host = _services_by_host(data)
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_title(_pdf_safe(title))
+    pdf.add_page()
+
+    def heading(text: str) -> None:
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, _pdf_safe(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    def para(text: str, muted: bool = False) -> None:
+        g = 110 if muted else 0
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(g, g, g)
+        pdf.multi_cell(0, 5, _pdf_safe(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_text_color(0, 0, 0)
+
+    def table(headers: list[str], rows: list[list[object]]) -> None:
+        pdf.set_font("Helvetica", "", 8)
+        with pdf.table() as t:
+            r = t.row()
+            for hcell in headers:
+                r.cell(_pdf_safe(hcell))
+            for row in rows:
+                r = t.row()
+                for cell in row:
+                    r.cell(_pdf_safe(cell))
+
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.cell(0, 10, _pdf_safe(title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(110, 110, 110)
+    pdf.cell(0, 6, _pdf_safe("Generated " + _when(data.generated)),
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_text_color(0, 0, 0)
+
+    heading("Summary")
+    table(["Item", "Count"], [
+        ["Hosts", len(data.hosts)], ["Services", len(data.services)],
+        *[[f"Findings: {s}", sev[s]] for s in SEVERITIES],
+        ["Sessions", len(data.sessions)], ["Evidence items", len(data.evidence)],
+    ])
+
+    heading("Findings")
+    if data.findings:
+        table(["Severity", "Host", "Title", "CVE", "KEV", "EPSS", "ATT&CK"],
+              [[f["severity"], f["host"], f["title"], f["cve"], "yes" if f["kev"] else "",
+                _epss(f["epss"]), f["attack"]] for f in data.findings])
+    else:
+        para("No findings recorded.", muted=True)
+
+    heading("Hosts and services")
+    if data.hosts:
+        table(["Host", "Status", "Open services"],
+              [[h["host"], h["status"],
+                "; ".join(_service_text(s) for s in by_host.get(h["host"], []))]
+               for h in data.hosts])
+    else:
+        para("No hosts recorded.", muted=True)
+
+    heading("Sessions")
+    if data.sessions:
+        table(["ID", "Host", "Type", "Transport", "Opened", "Closed"],
+              [[s["id"], s["host"], s["type"], s["transport"], _when(s["opened"]),
+                _when(s["closed"])] for s in data.sessions])
+    else:
+        para("No sessions.", muted=True)
+
+    heading("Evidence")
+    if data.evidence:
+        table(["Reference", "Host", "Kind", "Name", "Size", "Integrity"],
+              [[e["ref"], e["host"], e["kind"], e["name"], e["size"], e["integrity"]]
+               for e in data.evidence])
+    else:
+        para("No evidence recorded.", muted=True)
+
+    heading("ATT&CK coverage")
+    if data.techniques:
+        para("Count = findings tagged with the technique + module runs that declare it.",
+             muted=True)
+        table(["Tactic", "Technique", "Count"],
+              [[tactic, tech, n]
+               for tactic, techs in group_by_tactic(data.techniques)
+               for tech, n in techs])
+    else:
+        para("No ATT&CK techniques recorded.", muted=True)
+
+    heading("Reproduction steps")
+    if data.steps:
+        pdf.set_font("Courier", "", 8)
+        pdf.multi_cell(0, 4, _pdf_safe(_steps_text(data.steps)),
+                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    else:
+        para("No module runs recorded.", muted=True)
+
+    return bytes(pdf.output())
+
+
+def write_report_bytes(path: str | Path, content: bytes, overwrite: bool = False) -> Path:
+    """Write binary ``content`` (e.g. a PDF) to ``path`` with owner-only permissions (0600)."""
+    p = Path(path).expanduser()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | (os.O_TRUNC if overwrite else os.O_EXCL)
+    fd = os.open(p, flags, 0o600)
+    with os.fdopen(fd, "wb") as fh:
         fh.write(content)
     os.chmod(p, 0o600)
     return p
