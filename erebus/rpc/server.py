@@ -29,7 +29,7 @@ try:
         WebSocketDisconnect,
     )
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import HTMLResponse, StreamingResponse
+    from fastapi.responses import HTMLResponse, Response, StreamingResponse
     _FASTAPI_OK = True
 except ModuleNotFoundError:  # fastapi is an optional extra
     Depends = FastAPI = Header = HTTPException = Request = object  # type: ignore[assignment,misc]
@@ -155,6 +155,46 @@ def create_app(framework: Any, token: str | None = None,
     async def sessions() -> dict[str, Any]:
         return {"sessions": _rows(framework.store.sessions())}
 
+    @app.get("/scope")
+    async def scope_show() -> dict[str, Any]:
+        return {"enabled": framework.scope.enabled, "rules": framework.scope.show()}
+
+    @app.get("/research")
+    async def research() -> dict[str, Any]:
+        from ..research.fuzz import FuzzRunner
+        crashes = []
+        for row in framework.store.findings():
+            r = dict(row)
+            sev = str(r.get("severity") or "").lower()
+            title = str(r.get("title") or "").lower()
+            if "crash" in sev or "crash" in title or "fuzz" in title:
+                crashes.append(r)
+        try:
+            afl = FuzzRunner().available()
+        except Exception:
+            afl = False
+        return {"afl_available": afl, "crashes": crashes}
+
+    @app.get("/report", dependencies=[Depends(require_token)])
+    async def report(format: str = "html") -> Any:
+        from ..reporting import report as rpt
+        fmt = (format or "html").lower()
+        data = rpt.collect(framework.store, loader=framework.loader)
+        if fmt == "pdf":
+            try:
+                body = rpt.render_pdf(data, title="Erebus engagement report")
+            except RuntimeError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from None
+            disp = "attachment; filename=erebus-report.pdf"
+            return Response(content=body, media_type="application/pdf",
+                            headers={"Content-Disposition": disp})
+        if fmt == "md":
+            text = rpt.render_markdown(data)
+            disp = "attachment; filename=erebus-report.md"
+            return Response(content=text, media_type="text/markdown; charset=utf-8",
+                            headers={"Content-Disposition": disp})
+        return HTMLResponse(rpt.render_html(data, title="Erebus engagement report"))
+
     @app.post("/jobs", dependencies=[Depends(require_token)])
     async def start_job(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
         key = str(payload.get("module", "")).strip()
@@ -176,6 +216,39 @@ def create_app(framework: Any, token: str | None = None,
         except ScopeError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from None
         return {"job": jid, "module": module.name}
+
+    @app.post("/scope/allow", dependencies=[Depends(require_token)])
+    async def scope_allow(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        target = str(payload.get("target", "")).strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="missing 'target'")
+        framework.scope.allow(target)
+        from ..core.events import Event
+        framework.events.publish(Event("scope.changed", {"action": "allow", "target": target}))
+        return {"ok": True, "enabled": framework.scope.enabled, "rules": framework.scope.show()}
+
+    @app.post("/scope/set", dependencies=[Depends(require_token)])
+    async def scope_set(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        text = str(payload.get("text", ""))
+        if payload.get("replace"):
+            framework.scope.clear()
+        framework.scope.load_text(text)
+        framework.scope.enabled = True  # loading a scope turns the guardrail on
+        from ..core.events import Event
+        framework.events.publish(Event("scope.changed",
+                                       {"action": "set", "rules": len(framework.scope.show())}))
+        return {"ok": True, "enabled": framework.scope.enabled, "rules": framework.scope.show()}
+
+    @app.post("/scope/mode", dependencies=[Depends(require_token)])
+    async def scope_mode(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        enabled = payload.get("enabled")
+        if not isinstance(enabled, bool):
+            raise HTTPException(status_code=400, detail="'enabled' must be a boolean")
+        framework.scope.enabled = enabled
+        from ..core.events import Event
+        framework.events.publish(Event("scope.changed",
+                                       {"action": "mode", "enabled": enabled}))
+        return {"ok": True, "enabled": framework.scope.enabled, "rules": framework.scope.show()}
 
     @app.websocket("/ws/events")
     async def ws_events(ws: WebSocket) -> None:

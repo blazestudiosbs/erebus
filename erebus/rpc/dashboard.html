@@ -71,6 +71,41 @@
   .tgt-item{ background:rgba(14,11,24,0.6); border:1px solid #1b1630; border-left:2px solid #3a2d55; border-radius:8px; padding:10px 13px; font-family:ui-monospace,monospace; font-size:12.5px; }
   .tgt-item .q{ color:#e6e1ff; word-break:break-all; }
   .tgt-item .m{ color:#6e6a85; margin-top:3px; }
+  /* shared panel views (modules/findings/research/reports) */
+  .view-panel{ position:absolute; inset:0; z-index:4; overflow:auto; padding:48px 44px; }
+  .view-panel .pwrap{ max-width:900px; margin:0 auto; }
+  .view-panel h2{ margin:0 0 4px; font-size:19px; color:var(--accent); font-weight:600; letter-spacing:.3px; }
+  .view-panel .psub{ margin:0 0 18px; color:#8a81ad; font-size:13px; }
+  /* scope / guardrails block */
+  .scope-box{ background:rgba(14,11,24,0.6); border:1px solid #1b1630; border-radius:12px; padding:16px; margin:0 0 20px; }
+  .scope-head{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .scope-head h3{ margin:0; font-size:13px; color:#cfc6ef; font-weight:600; letter-spacing:.3px; }
+  .scope-badge{ font-size:11px; font-family:ui-monospace,monospace; padding:2px 9px; border-radius:999px; border:1px solid #2a2340; }
+  .scope-badge.gated{ color:#5dffa5; border-color:#1f5a3a; }
+  .scope-badge.lab{ color:#ff9d2e; border-color:#5a3a1f; }
+  .scope-rules{ font-family:ui-monospace,monospace; font-size:12px; color:#9a92b8; margin-bottom:10px; min-height:16px; word-break:break-all; }
+  .scope-rules .r{ display:inline-block; background:rgba(26,16,48,0.7); border:1px solid #2a2340; border-radius:6px; padding:2px 8px; margin:2px 4px 2px 0; color:#cfc6ef; }
+  .scope-ta{ width:100%; height:92px; resize:vertical; background:rgba(10,8,18,0.7); border:1px solid #2a2340; border-radius:9px; padding:10px 12px; color:#e6e1ff; font-family:ui-monospace,monospace; font-size:12.5px; outline:none; }
+  .scope-ta:focus{ border-color:var(--accent); }
+  .btnrow{ display:flex; gap:9px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+  .btn{ background:#1a1030; color:var(--accent); border:1px solid #3a2d55; border-radius:9px; padding:9px 15px; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .btn:hover{ background:#241640; } .btn:disabled{ opacity:.5; cursor:default; }
+  .btn.sec{ background:transparent; color:#9a92b8; }
+  .btn.sec:hover{ background:rgba(26,16,48,0.6); }
+  select.sel{ background:rgba(16,12,28,0.9); color:#e6e1ff; border:1px solid #2a2340; border-radius:9px; padding:10px 12px; font-size:13px; outline:none; }
+  select.sel:focus{ border-color:var(--accent); }
+  .note{ color:#6e6a85; font-size:12px; margin-top:6px; font-family:ui-monospace,monospace; }
+  /* tables + lists */
+  table.tbl{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.tbl th{ text-align:left; color:#6e6a85; font-weight:500; padding:7px 10px; border-bottom:1px solid #1b1630; position:sticky; top:0; background:var(--bg); font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+  table.tbl td{ padding:7px 10px; border-bottom:1px solid #120f20; color:#cfc6ef; font-family:ui-monospace,monospace; }
+  table.tbl tr.clk{ cursor:pointer; } table.tbl tr.clk:hover td{ background:rgba(26,16,48,0.4); }
+  .filter{ width:100%; max-width:320px; background:rgba(16,12,28,0.9); border:1px solid #2a2340; border-radius:9px; padding:9px 13px; color:#e6e1ff; font-size:13px; outline:none; margin-bottom:12px; font-family:ui-monospace,monospace; }
+  .filter:focus{ border-color:var(--accent); }
+  .find{ background:rgba(14,11,24,0.6); border:1px solid #1b1630; border-left:3px solid #3a2d55; border-radius:9px; padding:11px 14px; margin-bottom:9px; }
+  .find .ttl{ color:#e6e1ff; font-size:13.5px; } .find .meta{ color:#8a81ad; font-size:11.5px; font-family:ui-monospace,monospace; margin-top:4px; }
+  .sev-critical{ border-left-color:#ff3df5; } .sev-high{ border-left-color:#ff6a6a; } .sev-medium{ border-left-color:#ff9d2e; } .sev-low{ border-left-color:#22e0ff; } .sev-info{ border-left-color:#5a5470; }
+  .empty{ color:#6e6a85; font-family:ui-monospace,monospace; font-size:13px; padding:20px 0; }
 </style>
 </head>
 <body>
@@ -95,14 +130,65 @@
     <div class="ask"><span class="box">Ask Erebus&hellip;</span><span class="cp">&#10022; copilot</span></div>
     <div class="view-targets" id="targetsview" style="display:none">
       <div class="tgt-wrap">
-        <h2>OSINT &mdash; passive recon</h2>
-        <p class="tgt-sub">Enter a target and run open-source intelligence against it via Shodan. No packets are sent to the target &mdash; this queries Shodan's public index only. Needs a key: <code>erebus vault set shodan</code>. Examples: <code>8.8.8.8</code> &middot; <code>hostname:example.com</code> &middot; <code>org:"Example Inc"</code></p>
-        <div class="tgt-row">
-          <input id="tgt-input" class="tgt-input" placeholder="target &mdash; IP, hostname, domain, or Shodan query" autocomplete="off" spellcheck="false"/>
-          <button id="tgt-run" class="tgt-btn">Run OSINT</button>
+        <h2>Targets &amp; recon</h2>
+        <p class="tgt-sub">Set your scope guardrails, then run recon against an authorized target. Active modules are gated to the scope below. Passive OSINT (Shodan, exploit search) sends nothing to the target.</p>
+        <div class="scope-box">
+          <div class="scope-head">
+            <h3>Scope / guardrails</h3>
+            <span class="scope-badge gated" id="scope-badge">loading&hellip;</span>
+          </div>
+          <div class="scope-rules" id="scope-rules"></div>
+          <textarea class="scope-ta" id="scope-text" spellcheck="false" placeholder="paste scope &mdash; one target per line (IP, CIDR, or hostname); # starts a comment&#10;charterops.app&#10;10.10.0.0/24   # home lab"></textarea>
+          <div class="btnrow">
+            <button class="btn" id="scope-apply">Apply as scope</button>
+            <button class="btn sec" id="scope-upload-btn">Upload file&hellip;</button>
+            <input type="file" id="scope-file" accept=".txt,.lst,.scope,.csv,text/plain" style="display:none"/>
+            <button class="btn sec" id="scope-lab">Enable lab mode</button>
+          </div>
+          <div class="note" id="scope-note">Applying a scope turns the gate ON and replaces the current rules.</div>
         </div>
+        <div class="tgt-row">
+          <select class="sel" id="recon-kind"></select>
+          <input id="tgt-input" class="tgt-input" placeholder="target &mdash; IP, hostname, or domain" autocomplete="off" spellcheck="false"/>
+          <button id="tgt-run" class="tgt-btn">Run</button>
+        </div>
+        <div class="note" id="recon-note"></div>
         <div class="tgt-status" id="tgt-status"></div>
         <div class="tgt-results" id="tgt-results"></div>
+      </div>
+    </div>
+    <div class="view-panel" id="modulesview" style="display:none">
+      <div class="pwrap">
+        <h2>Modules</h2>
+        <p class="psub">Every loaded module. Click a row to load it into the Targets runner.</p>
+        <input class="filter" id="mod-filter" placeholder="filter modules&hellip;" spellcheck="false"/>
+        <div id="mod-table"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="view-panel" id="findingsview" style="display:none">
+      <div class="pwrap">
+        <h2>Findings</h2>
+        <p class="psub">Live findings, most severe first. Updates as modules report.</p>
+        <div id="find-list"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="view-panel" id="researchview" style="display:none">
+      <div class="pwrap">
+        <h2>Research &mdash; fuzz bench</h2>
+        <p class="psub">Find &amp; triage only &mdash; crash discovery and bucketing, no exploit generation.</p>
+        <div id="research-body"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="view-panel" id="reportsview" style="display:none">
+      <div class="pwrap">
+        <h2>Reports</h2>
+        <p class="psub">Generate an engagement report from the current session's findings, hosts and evidence.</p>
+        <div class="btnrow">
+          <button class="btn" id="rep-pdf">Download PDF</button>
+          <button class="btn" id="rep-html">Open HTML</button>
+          <button class="btn sec" id="rep-md">Download Markdown</button>
+        </div>
+        <div class="tgt-status" id="rep-status"></div>
       </div>
     </div>
   </div>
@@ -138,45 +224,168 @@
   document.getElementById('t-phl').onclick=function(){setTheme('phl');};
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
-  // ---- nav tab views (Flow = 3D graph, Targets = OSINT) ----------------
+  // ---- nav tabs + view switching --------------------------------------
+  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Research:'researchview', Reports:'reportsview'};
+  var curView='Flow', pollTimer=null;
   function setView(name){
-    var flow=(name==='Flow'), tgt=(name==='Targets');
-    if(!flow && !tgt) return;  // other tabs are not wired yet
+    if(name!=='Flow' && !PANELS[name]) return;
+    curView=name;
     var tabs=document.querySelectorAll('.tabs span');
     for(var i=0;i<tabs.length;i++){ tabs[i].classList.toggle('on', tabs[i].textContent.trim()===name); }
+    var flow=(name==='Flow');
     var g=document.getElementById('graph'); if(g) g.style.display=flow?'':'none';
-    var tv=document.getElementById('targetsview'); if(tv) tv.style.display=tgt?'block':'none';
+    for(var k in PANELS){ var el=document.getElementById(PANELS[k]); if(el) el.style.display=(name===k)?'block':'none'; }
     ['toggle','ask','hint'].forEach(function(c){ var el=document.querySelector('.'+c); if(el) el.style.display=flow?'':'none'; });
-    if(tgt){ var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
+    if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
+    if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
+    else if(name==='Modules'){ loadModules(); }
+    else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
+    else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
+    else if(name==='Reports'){ repStatus(''); }
   }
   (function(){ var tabs=document.querySelectorAll('.tabs span');
     for(var i=0;i<tabs.length;i++){ (function(sp){ sp.onclick=function(){ setView(sp.textContent.trim()); }; })(tabs[i]); } })();
 
-  // ---- run OSINT (passive Shodan) via POST /jobs -----------------------
-  var tgtResults=[];
+  // ---- api helpers -----------------------------------------------------
+  function hasTok(){ return !!window.EREBUS_TOKEN; }
+  function authH(){ return {'Content-Type':'application/json','Authorization':'Bearer '+window.EREBUS_TOKEN}; }
+  function offlineMsg(fn){ fn('not connected to a live server - run  erebus console --serve  and open the printed URL','#ff9d2e'); }
+  function apiPost(path,body){ return fetch(path,{method:'POST',headers:authH(),body:JSON.stringify(body)})
+    .then(function(r){ return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};},function(){return {ok:r.ok,status:r.status,j:{}};}); }); }
+
+  // ---- scope / guardrails ----------------------------------------------
+  function renderScope(d){
+    var badge=document.getElementById('scope-badge'), rules=document.getElementById('scope-rules'), lab=document.getElementById('scope-lab');
+    window.__scopeEnabled=d.enabled;
+    if(!badge) return;
+    if(d.enabled){ badge.className='scope-badge gated'; badge.textContent='gated - '+d.rules.length+' rule(s)'; if(lab) lab.textContent='Enable lab mode'; }
+    else { badge.className='scope-badge lab'; badge.textContent='LAB MODE - allow-all'; if(lab) lab.textContent='Disable lab mode (re-gate)'; }
+    if(rules){ rules.innerHTML = d.rules.length ? d.rules.map(function(x){return '<span class="r">'+x+'</span>';}).join('')
+      : '<span style="color:#6e6a85">deny-all - no targets authorized yet</span>'; }
+  }
+  function loadScope(){ fetch('scope',{cache:'no-store'}).then(function(r){return r.json();}).then(renderScope).catch(function(){}); }
+  function scopeNote(msg,color){ var n=document.getElementById('scope-note'); if(n){ n.textContent=msg; n.style.color=color||'#6e6a85'; } }
+  function applyScope(){ if(!hasTok()){ scopeNote('connect to a live server first','#ff9d2e'); return; }
+    var ta=document.getElementById('scope-text'), text=(ta&&ta.value)||'';
+    if(!text.trim()){ scopeNote('paste or upload a scope first','#ff9d2e'); return; }
+    apiPost('scope/set',{text:text,replace:true}).then(function(res){
+      if(res.ok){ renderScope(res.j); scopeNote('scope applied - '+res.j.rules.length+' rule(s), gate ON','#5dffa5'); }
+      else scopeNote('failed: '+((res.j&&res.j.detail)||res.status),'#ff6a6a'); }); }
+  function toggleLab(){ if(!hasTok()){ scopeNote('connect to a live server first','#ff9d2e'); return; }
+    apiPost('scope/mode',{enabled:!window.__scopeEnabled}).then(function(res){
+      if(res.ok){ renderScope(res.j); scopeNote(res.j.enabled?'gate ON - scope enforced':'LAB MODE - scope gate OFF (allow-all); isolated lab only', res.j.enabled?'#5dffa5':'#ff9d2e'); }
+      else scopeNote('failed: '+((res.j&&res.j.detail)||res.status),'#ff6a6a'); }); }
+  function wireScope(){
+    var ap=document.getElementById('scope-apply'); if(ap) ap.onclick=applyScope;
+    var lb=document.getElementById('scope-lab'); if(lb) lb.onclick=toggleLab;
+    var ub=document.getElementById('scope-upload-btn'), fi=document.getElementById('scope-file');
+    if(ub&&fi){ ub.onclick=function(){ fi.click(); };
+      fi.onchange=function(){ var f=fi.files&&fi.files[0]; if(!f) return; var rd=new FileReader();
+        rd.onload=function(){ var ta=document.getElementById('scope-text'); if(ta) ta.value=rd.result; scopeNote('loaded '+f.name+' - review, then Apply as scope','#22e0ff'); };
+        rd.readAsText(f); fi.value=''; }; }
+  }
+
+  // ---- recon runner (Targets) ------------------------------------------
+  var RECON=[
+    {label:'Passive OSINT (Shodan)', module:'auxiliary/gather/shodan_search', opt:'QUERY', note:'queries Shodan index - no packets to the target - needs:  erebus vault set shodan'},
+    {label:'Port scan',              module:'auxiliary/scanner/portscan',      opt:'RHOSTS', note:'pure-python TCP connect scan - gated to the scope above'},
+    {label:'Nmap',                   module:'auxiliary/scanner/nmap',          opt:'RHOSTS', note:'needs the nmap binary - gated to the scope above'},
+    {label:'Web scan (nuclei)',      module:'auxiliary/scanner/nuclei',        opt:'RHOST',  note:'needs the nuclei binary - gated to the scope above'},
+    {label:'Exploit search',         module:'auxiliary/gather/searchsploit',   opt:'QUERY',  note:'local exploit-db lookup - no packets to the target'}
+  ];
+  function reconNote(){ var sel=document.getElementById('recon-kind'), n=document.getElementById('recon-note');
+    if(sel&&n){ n.textContent=RECON[(sel.value|0)].note; } }
   function tgtStatus(msg,color){ var s=document.getElementById('tgt-status'); if(s){ s.textContent=msg; s.style.color=color||'#8a81ad'; } }
+  var tgtResults=[];
   function renderTgt(){ var box=document.getElementById('tgt-results'); if(!box) return;
     box.innerHTML=tgtResults.map(function(r){ return '<div class="tgt-item" style="border-left-color:'+r.c+'"><div class="q">'+r.q+'</div><div class="m">'+r.m+'</div></div>'; }).join(''); }
-  function runOsint(){
-    var inp=document.getElementById('tgt-input'), btn=document.getElementById('tgt-run');
-    var q=((inp&&inp.value)||'').trim();
+  function runRecon(){
+    var sel=document.getElementById('recon-kind'), inp=document.getElementById('tgt-input'), btn=document.getElementById('tgt-run');
+    var kind=RECON[(sel?sel.value|0:0)], q=((inp&&inp.value)||'').trim();
     if(!q){ tgtStatus('enter a target first','#ff9d2e'); if(inp)inp.focus(); return; }
-    if(!window.EREBUS_TOKEN){ tgtStatus('not connected to a live server \u2014 start it with  erebus console --serve  and open the printed http://127.0.0.1 URL','#ff9d2e'); return; }
-    if(btn) btn.disabled=true; tgtStatus('running OSINT on  '+q+'  \u2026','#22e0ff');
-    fetch('jobs',{ method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+window.EREBUS_TOKEN},
-      body:JSON.stringify({module:'auxiliary/gather/shodan_search', options:{QUERY:q}}) })
-    .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,status:r.status,j:j}; },function(){ return {ok:r.ok,status:r.status,j:{}}; }); })
-    .then(function(res){ if(btn) btn.disabled=false;
-      if(res.ok){ tgtStatus('job '+res.j.job+' started \u2014 results stream into the activity feed and graph','#5dffa5');
-        tgtResults.unshift({q:q,m:'job '+res.j.job+' \u00b7 '+res.j.module+' \u00b7 started',c:'#5dffa5'}); if(inp) inp.value=''; }
-      else { var d=(res.j&&res.j.detail)?res.j.detail:('HTTP '+res.status);
-        tgtStatus('rejected: '+d, '#ff6a6a'); tgtResults.unshift({q:q,m:'rejected \u00b7 '+d,c:'#ff6a6a'}); }
-      renderTgt(); })
-    .catch(function(e){ if(btn) btn.disabled=false; tgtStatus('request failed: '+e,'#ff6a6a'); });
+    if(!hasTok()){ offlineMsg(tgtStatus); return; }
+    var opts={}; opts[kind.opt]=q;
+    if(btn) btn.disabled=true; tgtStatus('running '+kind.label+' on  '+q+'  ...','#22e0ff');
+    apiPost('jobs',{module:kind.module, options:opts}).then(function(res){ if(btn) btn.disabled=false;
+      if(res.ok){ tgtStatus('job '+res.j.job+' started ('+kind.label+') - watch Findings and the activity feed','#5dffa5');
+        tgtResults.unshift({q:kind.label+'   '+q, m:'job '+res.j.job+' - '+res.j.module+' - started', c:'#5dffa5'}); if(inp) inp.value=''; }
+      else { var d=(res.j&&res.j.detail)||('HTTP '+res.status);
+        var hint=(res.status===403)?'   (out of scope - add it to the scope above, or enable lab mode)':'';
+        tgtStatus('rejected: '+d+hint, '#ff6a6a'); tgtResults.unshift({q:kind.label+'   '+q, m:'rejected - '+d, c:'#ff6a6a'}); }
+      renderTgt(); });
   }
-  (function(){ var b=document.getElementById('tgt-run'), i=document.getElementById('tgt-input');
-    if(b) b.onclick=runOsint;
-    if(i) i.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); runOsint(); } }); })();
+  (function(){ var sel=document.getElementById('recon-kind');
+    if(sel){ sel.innerHTML=RECON.map(function(r,i){ return '<option value="'+i+'">'+r.label+'</option>'; }).join(''); sel.onchange=reconNote; }
+    var b=document.getElementById('tgt-run'), i=document.getElementById('tgt-input');
+    if(b) b.onclick=runRecon;
+    if(i) i.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); runRecon(); } });
+    reconNote(); wireScope(); })();
+
+  // ---- Modules tab -----------------------------------------------------
+  var MODS=[];
+  function loadModules(){ fetch('modules',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ MODS=d.modules||[]; renderModules(); })
+    .catch(function(){ var t=document.getElementById('mod-table'); if(t) t.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function renderModules(){ var box=document.getElementById('mod-table'); if(!box) return;
+    var f=(((document.getElementById('mod-filter')||{}).value)||'').toLowerCase();
+    var rows=MODS.filter(function(m){ return !f || (m.key+' '+m.type+' '+((m.attack||[]).join(' '))+' '+(m.description||'')).toLowerCase().indexOf(f)>=0; });
+    if(!rows.length){ box.innerHTML='<div class="empty">no modules match</div>'; return; }
+    var html='<table class="tbl"><thead><tr><th>module</th><th>type</th><th>rank</th><th>ATT&amp;CK</th><th>description</th></tr></thead><tbody>';
+    rows.forEach(function(m){ html+='<tr class="clk" data-k="'+m.key+'"><td style="color:#e6e1ff">'+m.key+'</td><td>'+m.type+'</td><td>'+m.rank+'</td><td>'+((m.attack||[]).join(', '))+'</td><td style="color:#8a81ad">'+(m.description||'')+'</td></tr>'; });
+    box.innerHTML=html+'</tbody></table>';
+    var trs=box.querySelectorAll('tr.clk'); for(var i=0;i<trs.length;i++){ (function(tr){ tr.onclick=function(){ useModule(tr.getAttribute('data-k')); }; })(trs[i]); }
+  }
+  function useModule(key){ var idx=-1; for(var i=0;i<RECON.length;i++){ if(RECON[i].module===key) idx=i; }
+    setView('Targets');
+    if(idx>=0){ var sel=document.getElementById('recon-kind'); if(sel){ sel.value=idx; reconNote(); } tgtStatus('loaded '+key+' - enter a target and Run','#22e0ff'); }
+    else { tgtStatus('module '+key+' runs from the console:  use '+key, '#ff9d2e'); }
+    var inp=document.getElementById('tgt-input'); if(inp) inp.focus();
+  }
+  (function(){ var f=document.getElementById('mod-filter'); if(f) f.addEventListener('input',renderModules); })();
+
+  // ---- Findings tab ----------------------------------------------------
+  function loadFindings(){ fetch('findings',{cache:'no-store'}).then(function(r){return r.json();}).then(renderFindings)
+    .catch(function(){ var b=document.getElementById('find-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function renderFindings(d){ var box=document.getElementById('find-list'); if(!box) return;
+    var fs=(d.findings||d.rows||d||[]);
+    if(!fs.length){ box.innerHTML='<div class="empty">no findings yet - run some recon from the Targets tab</div>'; return; }
+    box.innerHTML=fs.map(function(f){ var sev=String(f.severity||'info').toLowerCase();
+      var meta=[f.host,(f.kev?'KEV':''),(f.attack||f.technique||''),(f.cve||'')].filter(Boolean).join('  -  ');
+      return '<div class="find sev-'+sev+'"><div class="ttl">'+(f.title||f.name||'finding')+'</div><div class="meta">'+sev+(meta?'  -  '+meta:'')+'</div></div>'; }).join('');
+  }
+
+  // ---- Research tab ----------------------------------------------------
+  function loadResearch(){ fetch('research',{cache:'no-store'}).then(function(r){return r.json();}).then(renderResearch)
+    .catch(function(){ var b=document.getElementById('research-body'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function renderResearch(d){ var box=document.getElementById('research-body'); if(!box) return;
+    var afl=d.afl_available?'<span style="color:#5dffa5">available</span>':'<span style="color:#ff9d2e">not installed</span>';
+    var crashes=d.crashes||[];
+    var html='<div class="scope-box"><div class="scope-head"><h3>AFL++ fuzzer</h3></div><div class="scope-rules">afl-fuzz: '+afl+'</div><div class="note">Run fuzzing from the console:  erebus fuzz --help   (find + triage only)</div></div>';
+    html+='<h3 style="color:#cfc6ef;font-size:13px;margin:18px 0 8px">Crashes / fuzz findings ('+crashes.length+')</h3>';
+    html+= crashes.length ? crashes.map(function(c){ return '<div class="find sev-high"><div class="ttl">'+(c.title||'crash')+'</div><div class="meta">'+(c.host||'')+(c.severity?'  -  '+c.severity:'')+'</div></div>'; }).join('')
+                          : '<div class="empty">no crashes recorded yet</div>';
+    box.innerHTML=html;
+  }
+
+  // ---- Reports tab -----------------------------------------------------
+  function repStatus(msg,color){ var s=document.getElementById('rep-status'); if(s){ s.textContent=msg||''; s.style.color=color||'#8a81ad'; } }
+  function getReport(fmt, open){ if(!hasTok()){ repStatus('connect to a live server first','#ff9d2e'); return; }
+    repStatus('generating '+fmt.toUpperCase()+' ...','#22e0ff');
+    fetch('report?format='+fmt,{headers:{'Authorization':'Bearer '+window.EREBUS_TOKEN}}).then(function(r){
+      if(!r.ok){ return r.json().then(function(j){ throw new Error((j&&j.detail)||('HTTP '+r.status)); }, function(){ throw new Error('HTTP '+r.status); }); }
+      return r.blob(); }).then(function(blob){ var url=URL.createObjectURL(blob);
+      if(open){ window.open(url,'_blank'); repStatus('opened HTML report in a new tab','#5dffa5'); }
+      else { var a=document.createElement('a'); a.href=url; a.download='erebus-report.'+fmt; document.body.appendChild(a); a.click(); a.remove(); repStatus(fmt.toUpperCase()+' downloaded','#5dffa5'); }
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 15000);
+    }).catch(function(e){ repStatus('failed: '+e.message,'#ff6a6a'); }); }
+  (function(){ var pdf=document.getElementById('rep-pdf'), htm=document.getElementById('rep-html'), md=document.getElementById('rep-md');
+    if(pdf) pdf.onclick=function(){ getReport('pdf',false); };
+    if(htm) htm.onclick=function(){ getReport('html',true); };
+    if(md) md.onclick=function(){ getReport('md',false); }; })();
+
+  // ---- live hook: refresh data views + scope as events arrive ----------
+  window.__ev=function(m){ var t=(m&&m.type)||'';
+    if(t.indexOf('scope')>=0){ loadScope(); }
+    if(curView==='Findings' && (t.indexOf('finding')>=0||t.indexOf('module')>=0)){ loadFindings(); } };
 
   function bin(id){ var h=0,i; for(i=0;i<id.length;i++){h=(h*31+id.charCodeAt(i))&255;} return h.toString(2).padStart(8,'0'); }
   function disp(n){ return n.disp||n.id; }
@@ -339,7 +548,7 @@
   function refetchGraph(){ clearTimeout(refetchTimer); refetchTimer=setTimeout(function(){
     fetch('graph',{cache:'no-store'}).then(function(r){return r.json();}).then(applyLive).catch(function(){}); }, 250); }
 
-  function onStreamMsg(m){ if(m.type==='graph.snapshot'){ applyLive(m.data); } else { pushActivity(m); refetchGraph(); } }
+  function onStreamMsg(m){ if(m.type==='graph.snapshot'){ applyLive(m.data); } else { pushActivity(m); refetchGraph(); if(window.__ev){ try{ window.__ev(m); }catch(_){} } } }
   function tokq(){ return window.EREBUS_TOKEN?('?token='+encodeURIComponent(window.EREBUS_TOKEN)):''; }
 
   function scheduleReconnect(){ if(closing) return; clearTimeout(reconnTimer);

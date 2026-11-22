@@ -31,11 +31,20 @@ class Scope:
         except ValueError:
             self._hosts.add(target.lower())
 
-    def load(self, path: str) -> None:
-        for raw in Path(path).expanduser().read_text().splitlines():
+    def clear(self) -> None:
+        """Drop all allow rules (keeps ``enabled`` as-is)."""
+        self._nets = []
+        self._hosts = set()
+
+    def load_text(self, text: str) -> None:
+        """Add allow rules from text: one target per line, ``#`` starts a comment."""
+        for raw in text.splitlines():
             line = raw.split("#", 1)[0].strip()
             if line:
                 self.allow(line)
+
+    def load(self, path: str) -> None:
+        self.load_text(Path(path).expanduser().read_text())
 
     def _allowed(self, target: str) -> bool:
         if target.lower() in self._hosts:

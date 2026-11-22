@@ -308,6 +308,10 @@ def add_console_args(p: argparse.ArgumentParser) -> None:
                    help="also serve the live 3D dashboard, sharing THIS console's state")
     p.add_argument("--host", default="127.0.0.1", help="dashboard bind host (with --serve)")
     p.add_argument("--port", type=int, default=8777, help="dashboard port (with --serve)")
+    p.add_argument("--scope", default=None, metavar="FILE",
+                   help="preload scope guardrails from a file (one target per line)")
+    p.add_argument("--lab", action="store_true",
+                   help="LAB MODE: disable the scope gate (allow-all) — isolated lab networks only")
 
 
 def build_framework(store: str = ":memory:", edition: str = "workstation",
@@ -321,9 +325,16 @@ def build_framework(store: str = ":memory:", edition: str = "workstation",
 def launch(store: str = ":memory:", edition: str = "workstation", log: str | None = None,
            journal_dir: str | None = None, evidence_dir: str | None = None,
            serve: bool = False, host: str = "127.0.0.1", port: int = 8777,
-           token: str | None = None) -> None:
+           token: str | None = None, scope_file: str | None = None,
+           lab: bool = False) -> None:
     """Build the framework, optionally co-host the dashboard, and run the REPL."""
     fw = build_framework(store, edition, log, journal_dir, evidence_dir)
+    if scope_file:
+        fw.scope.load(scope_file)
+        print(col(f"  scope: loaded {len(fw.scope.show())} rule(s) from {scope_file}", "dim"))
+    if lab:
+        fw.scope.enabled = False
+        print(col("  [!] LAB MODE — scope gate OFF (allow-all); isolated lab only", "warn"))
     server = None
     if serve:
         from .rpc.server import serve_in_thread
