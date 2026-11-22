@@ -152,3 +152,20 @@ def test_notes_roundtrip_token_guarded(tmp_path, monkeypatch):
         r = c.post("/notes", json={"text": "# notes\n- item"}, headers=AUTH).json()
         assert r["ok"] and r["bytes"] > 0
         assert c.get("/notes", headers=AUTH).json()["text"] == "# notes\n- item"
+
+
+def test_copilot_requires_token():
+    with _client(Framework()) as c:
+        assert c.post("/copilot", json={"question": "hi"}).status_code == 401
+
+
+def test_copilot_without_llm_key_returns_503():
+    with _client(Framework()) as c:
+        r = c.post("/copilot", json={"question": "what next?"}, headers=AUTH)
+        assert r.status_code == 503   # no anthropic/openai key in the vault
+
+
+def test_copilot_unknown_provider_400():
+    with _client(Framework()) as c:
+        r = c.post("/copilot", json={"question": "x", "provider": "nope"}, headers=AUTH)
+        assert r.status_code == 400

@@ -38,6 +38,7 @@ except ModuleNotFoundError:  # fastapi is an optional extra
     CORSMiddleware = HTMLResponse = StreamingResponse = None  # type: ignore[assignment,misc]
     _FASTAPI_OK = False
 
+from erebus.connectors.base import ConnectorError, MissingKey, NetworkDisabled
 from erebus.core.options import OptionError
 from erebus.core.scope import ScopeError
 
@@ -274,6 +275,29 @@ def create_app(framework: Any, token: str | None = None,
         except OSError as exc:
             raise HTTPException(status_code=500, detail=f"could not write notes: {exc}") from None
         return {"ok": True, "bytes": len(text.encode("utf-8")), "path": str(path)}
+
+    @app.post("/copilot", dependencies=[Depends(require_token)])
+    def copilot(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006  (sync: LLM call runs in a threadpool)
+        from erebus.connectors.llm import LLMConnector
+        from erebus.copilot import Copilot
+        question = str(payload.get("question", "")).strip() or (
+            "Given the engagement state, what should I do next? Suggest concrete next "
+            "steps and which Erebus modules to run. Be brief.")
+        provider = str(payload.get("provider", "anthropic")).strip() or "anthropic"
+        if provider not in ("anthropic", "openai"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown provider {provider!r}; use 'anthropic' or 'openai'")
+        try:
+            conn = LLMConnector(framework.vault, provider=provider,
+                                offline=bool(framework.config.get("offline")),
+                                tor=bool(framework.config.get("tor")))
+            answer = Copilot(framework, conn).ask(question)
+        except (MissingKey, NetworkDisabled) as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from None
+        except ConnectorError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from None
+        return {"answer": answer, "provider": provider}
 
     @app.websocket("/ws/events")
     async def ws_events(ws: WebSocket) -> None:
