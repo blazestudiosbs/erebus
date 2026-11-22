@@ -158,6 +158,11 @@ def main() -> None:
                      help="write a JSONL transcript per session here (workstation only)")
     rpc.add_argument("--evidence-dir", default=None, metavar="DIR",
                      help="store hashed evidence artifacts here (workstation only)")
+    rpc.add_argument("--token", default=None, metavar="TOKEN",
+                     help="bearer token for the control API (generated if unset)")
+    rpc.add_argument("--cors-origin", action="append", default=None,
+                     dest="cors_origin", metavar="ORIGIN",
+                     help="allow cross-origin reads from ORIGIN (repeatable)")
 
     rep = sub.add_parser("report", help="generate an HTML or Markdown report from a datastore")
     rep.add_argument("--store", required=True, help="framework datastore file to report on")
@@ -201,11 +206,13 @@ def main() -> None:
         if args.edition == "live" and (args.log or args.journal_dir or args.evidence_dir):
             print("note: the live edition keeps no logs; "
                   "--log/--journal-dir/--evidence-dir were ignored")
-        serve(fw, host=args.host, port=args.port)
+        serve(fw, host=args.host, port=args.port, token=args.token,
+              cors_origins=args.cors_origin)
     elif args.cmd == "console":
         console_launch(store=args.store, edition=args.edition, log=args.log,
                        journal_dir=args.journal_dir, evidence_dir=args.evidence_dir,
-                       serve=args.serve, host=args.host, port=args.port)
+                       serve=args.serve, host=args.host, port=args.port,
+                       token=args.token)
     else:
         console_launch()
 

@@ -129,7 +129,8 @@ def test_ws_sends_snapshot_then_live_event():
     from erebus.rpc.server import create_app
 
     fw = _seed_framework()
-    with TestClient(create_app(fw)) as client, client.websocket_connect("/ws/events") as ws:
+    app = create_app(fw, token="tok")
+    with TestClient(app) as client, client.websocket_connect("/ws/events?token=tok") as ws:
         first = ws.receive_json()
         assert first["type"] == "graph.snapshot"
         assert any(n["type"] == "core" for n in first["data"]["nodes"])
