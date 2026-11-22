@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 from erebus.core import events as ev
 
 from . import evidence as evmod
+from .attack import group_by_tactic
 
 if TYPE_CHECKING:
     from erebus.core.datastore import Store
@@ -210,8 +211,10 @@ def render_markdown(data: ReportData, title: str = "Engagement report") -> str:
     if data.techniques:
         parts.append("Count = findings tagged with the technique + module runs that declare it.")
         parts.append("")
-        parts.append(_md_table(["Technique", "Count"],
-                               [[t, n] for t, n in data.techniques.items()]))
+        rows = [[tactic, tech, n]
+                for tactic, techs in group_by_tactic(data.techniques)
+                for tech, n in techs]
+        parts.append(_md_table(["Tactic", "Technique", "Count"], rows))
     else:
         parts.append("No ATT&CK techniques recorded.")
 
@@ -344,9 +347,11 @@ def render_html(data: ReportData, title: str = "Engagement report", theme: str =
         peak = max(data.techniques.values())
         out.append('<p class="muted">Count = findings tagged with the technique + module runs '
                    "that declare it.</p>")
-        out.append('<div class="grid">' + "".join(
-            f'<div class="cell" style="{_heat_style(n, peak)}"><b>{_h(t)}</b>{n}</div>'
-            for t, n in data.techniques.items()) + "</div>")
+        for tactic, techs in group_by_tactic(data.techniques):
+            out.append(f'<div class="muted" style="margin:10px 0 4px">{_h(tactic)}</div>')
+            out.append('<div class="grid">' + "".join(
+                f'<div class="cell" style="{_heat_style(n, peak)}"><b>{_h(t)}</b>{n}</div>'
+                for t, n in techs) + "</div>")
     else:
         out.append('<p class="muted">No ATT&amp;CK techniques recorded.</p>')
 
@@ -475,7 +480,10 @@ def render_pdf(data: ReportData, title: str = "Engagement report") -> bytes:
     if data.techniques:
         para("Count = findings tagged with the technique + module runs that declare it.",
              muted=True)
-        table(["Technique", "Count"], [[t, n] for t, n in data.techniques.items()])
+        table(["Tactic", "Technique", "Count"],
+              [[tactic, tech, n]
+               for tactic, techs in group_by_tactic(data.techniques)
+               for tech, n in techs])
     else:
         para("No ATT&CK techniques recorded.", muted=True)
 
