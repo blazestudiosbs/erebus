@@ -7,7 +7,8 @@ import sys
 from typing import Any
 
 from . import __version__
-from .console import main as console_main
+from .console import add_console_args
+from .console import launch as console_launch
 from .intel import default_db_path
 from .intel import ingest as intel_ingest
 from .intel.db import IntelStore
@@ -140,7 +141,8 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
     sub = p.add_subparsers(dest="cmd")
-    sub.add_parser("console", help="launch the interactive console (ereconsole)")
+    consolep = sub.add_parser("console", help="launch the interactive console (ereconsole)")
+    add_console_args(consolep)
 
     intel = sub.add_parser("intel", help="CVE intel (NVD/KEV/EPSS/EDB)")
     intel.add_argument("--db", default=None, help="intel sqlite path")
@@ -169,6 +171,11 @@ def main() -> None:
                      help="write a JSONL transcript per session here (workstation only)")
     rpc.add_argument("--evidence-dir", default=None, metavar="DIR",
                      help="store hashed evidence artifacts here (workstation only)")
+    rpc.add_argument("--token", default=None, metavar="TOKEN",
+                     help="bearer token for the control API (generated if unset)")
+    rpc.add_argument("--cors-origin", action="append", default=None,
+                     dest="cors_origin", metavar="ORIGIN",
+                     help="allow cross-origin reads from ORIGIN (repeatable)")
 
     rep = sub.add_parser("report", help="generate an HTML or Markdown report from a datastore")
     rep.add_argument("--store", required=True, help="framework datastore file to report on")
@@ -205,6 +212,8 @@ def main() -> None:
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve
+        if args.edition == "live":
+            raise SystemExit("error: the live (amnesic) edition does not serve the dashboard")
         fw = Framework(store_path=args.store, edition=args.edition, log_path=args.log,
                        journal_dir=args.journal_dir, evidence_dir=args.evidence_dir)
         print(f"Erebus RPC → http://{args.host}:{args.port}  "
@@ -212,9 +221,15 @@ def main() -> None:
         if args.edition == "live" and (args.log or args.journal_dir or args.evidence_dir):
             print("note: the live edition keeps no logs; "
                   "--log/--journal-dir/--evidence-dir were ignored")
-        serve(fw, host=args.host, port=args.port)
+        serve(fw, host=args.host, port=args.port, token=args.token,
+              cors_origins=args.cors_origin)
+    elif args.cmd == "console":
+        console_launch(store=args.store, edition=args.edition, log=args.log,
+                       journal_dir=args.journal_dir, evidence_dir=args.evidence_dir,
+                       serve=args.serve, host=args.host, port=args.port,
+                       token=args.token)
     else:
-        console_main()
+        console_launch()
 
 
 if __name__ == "__main__":
