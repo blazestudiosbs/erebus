@@ -40,6 +40,13 @@
   .ask{ position:absolute; left:16px; right:16px; bottom:16px; z-index:3; display:flex; gap:9px; align-items:center; }
   .ask .box{ flex:1; background:rgba(16,12,28,0.82); border:1px solid #241a3a; border-radius:999px; padding:10px 16px; color:#6e6a85; font-size:14px; }
   .ask .cp{ background:#1a1030; color:var(--accent); border-radius:999px; padding:8px 14px; font-size:13px; white-space:nowrap; }
+  .ask .cp{ cursor:pointer; }
+  input.box{ outline:none; color:#e6e1ff; }
+  input.box::placeholder{ color:#6e6a85; }
+  .ask-answer{ position:absolute; left:16px; right:16px; bottom:62px; z-index:4; max-height:44vh; overflow:auto; background:rgba(14,11,24,0.97); border:1px solid #2a2340; border-radius:12px; padding:14px 16px; font-size:13px; line-height:1.6; color:#cfc6ef; white-space:pre-wrap; box-shadow:0 10px 40px rgba(0,0,0,0.55); }
+  .ask-answer .ah{ display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+  .ask-answer .ax{ margin-left:auto; cursor:pointer; color:#6e6a85; }
+  .ask-answer .ax:hover{ color:#cfc6ef; }
   .rail{ border-left:1px solid #1b1630; padding:14px; display:flex; flex-direction:column; gap:12px; overflow:hidden; }
   .tiles{ display:grid; grid-template-columns:1fr 1fr; gap:9px; }
   .tile{ background:rgba(20,16,34,0.6); border:1px solid #1b1630; border-radius:10px; padding:9px 11px; }
@@ -140,7 +147,8 @@
     <div class="toggle"><button id="m-graph" class="on">graph</button><button id="m-tree">tree</button></div>
     <div class="conn"><span class="dot off" id="rpcdot"></span><span class="lbl" id="rpclbl">offline &middot; sample data</span><button id="rpcbtn">reconnect</button></div>
     <div class="hint">drag &middot; scroll &middot; click</div>
-    <div class="ask"><span class="box">Ask Erebus&hellip;</span><span class="cp">&#10022; copilot</span></div>
+    <div class="ask"><input id="ask-box" class="box" placeholder="Ask Erebus — or leave blank for next-step suggestions" autocomplete="off" spellcheck="false"/><span class="cp" id="ask-send">&#10022; copilot</span></div>
+    <div class="ask-answer" id="ask-answer" style="display:none"></div>
     <div class="view-targets" id="targetsview" style="display:none">
       <div class="tgt-wrap">
         <h2>Targets &amp; recon</h2>
@@ -257,6 +265,7 @@
     var g=document.getElementById('graph'); if(g) g.style.display=flow?'':'none';
     for(var k in PANELS){ var el=document.getElementById(PANELS[k]); if(el) el.style.display=(name===k)?'block':'none'; }
     ['toggle','ask','hint'].forEach(function(c){ var el=document.querySelector('.'+c); if(el) el.style.display=flow?'':'none'; });
+    if(!flow){ var aa=document.getElementById('ask-answer'); if(aa) aa.style.display='none'; }
     if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
     if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
     else if(name==='Modules'){ loadModules(); }
@@ -454,6 +463,33 @@
   window.__ev=function(m){ var t=(m&&m.type)||'';
     if(t.indexOf('scope')>=0){ loadScope(); }
     if(curView==='Findings' && (t.indexOf('finding')>=0||t.indexOf('module')>=0)){ loadFindings(); } };
+
+  // ---- copilot (Ask Erebus): advisory helper grounded in engagement state ----
+  function escHtml(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function showAnswer(kind, text, provider){
+    var box=document.getElementById('ask-answer'); if(!box) return;
+    var color=kind==='error'?'#ff9d2e':(kind==='think'?'#22e0ff':'#5dffa5');
+    var label=kind==='ok'?('✦ copilot'+(provider?(' · '+provider):'')):'✦ copilot';
+    box.innerHTML='<div class="ah"><span style="color:'+color+'">'+label+'</span><span class="ax" id="ask-close">close</span></div>'+escHtml(text);
+    box.style.display='block';
+    var c=document.getElementById('ask-close'); if(c) c.onclick=function(){ box.style.display='none'; };
+  }
+  function askCopilot(){
+    var inp=document.getElementById('ask-box'), btn=document.getElementById('ask-send');
+    var q=((inp&&inp.value)||'').trim();
+    if(!hasTok()){ showAnswer('error','Connect to a live server first (run  erebus console --serve  and open the printed URL).'); return; }
+    showAnswer('think', q?('thinking about: '+q):'thinking about your next steps…');
+    if(btn) btn.style.opacity=0.5;
+    apiPost('copilot',{question:q}).then(function(res){ if(btn) btn.style.opacity=1;
+      if(res.ok){ showAnswer('ok', res.j.answer||'(no answer)', res.j.provider); if(inp) inp.value=''; }
+      else { var d=(res.j&&res.j.detail)||('HTTP '+res.status);
+        var hint=(res.status===503)?'\n\nSet an LLM key first:  erebus vault set anthropic   (or openai), then retry.':'';
+        showAnswer('error', d+hint); } })
+    .catch(function(e){ if(btn) btn.style.opacity=1; showAnswer('error','request failed: '+e); });
+  }
+  (function(){ var b=document.getElementById('ask-send'), i=document.getElementById('ask-box');
+    if(b) b.onclick=askCopilot;
+    if(i) i.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); askCopilot(); } }); })();
 
   function bin(id){ var h=0,i; for(i=0;i<id.length;i++){h=(h*31+id.charCodeAt(i))&255;} return h.toString(2).padStart(8,'0'); }
   function disp(n){ return n.disp||n.id; }
