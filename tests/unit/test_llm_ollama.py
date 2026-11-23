@@ -55,3 +55,17 @@ def test_cloud_providers_still_require_https():
     v.set("openai", "k")
     with pytest.raises(ConnectorError):   # https-only guard unchanged for openai
         LLMConnector(v, provider="openai", base_url="http://insecure").complete("hi")
+
+
+def test_openai_text_falls_back_to_reasoning():
+    from erebus.connectors.llm import _openai_text
+    data = {"choices": [{"message": {"content": "", "reasoning": "check auth flows first"},
+                         "finish_reason": "stop"}]}
+    assert _openai_text(data) == "check auth flows first"
+
+
+def test_openai_text_length_limit_gives_clear_error():
+    from erebus.connectors.llm import _openai_text
+    with pytest.raises(ConnectorError) as e:
+        _openai_text({"choices": [{"message": {"content": ""}, "finish_reason": "length"}]})
+    assert "token limit" in str(e.value)
