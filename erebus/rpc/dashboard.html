@@ -315,7 +315,7 @@
     <select id="cop-provider"><option value="ollama">Ollama (local)</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option></select>
     <div id="cop-ollama-fields">
       <label>Ollama URL</label><input id="cop-url" placeholder="http://command-center:3000" autocomplete="off" spellcheck="false"/>
-      <label>Model</label><input id="cop-model" placeholder="llama3" autocomplete="off" spellcheck="false"/>
+      <label>Model <span id="cop-model-hint" style="font-weight:400;color:#8a7fb0"></span></label><select id="cop-model"><option value="">— Test connection to load models —</option></select>
       <label>API key (only if your server requires one)</label>
       <div class="cop-keyrow"><input id="cop-key" type="password" placeholder="paste key, then Save" autocomplete="off"/><button id="cop-key-save" class="cop-keybtn">Save</button></div>
       <div id="cop-key-out" class="cop-test-out"></div>
@@ -614,7 +614,7 @@
     var sel=document.getElementById('cop-provider'), of=document.getElementById('cop-ollama-fields'),
         u=document.getElementById('cop-url'), m=document.getElementById('cop-model');
     if(sel) sel.value=cfg.provider; if(of) of.style.display=(cfg.provider==='ollama')?'block':'none';
-    if(u&&!u.value) u.value=cfg.url; if(m&&!m.value) m.value=cfg.model; }
+    if(u&&!u.value) u.value=cfg.url; copSetModels(null, cfg.model); }
   function copSaveCfg(){ try{
       var sel=document.getElementById('cop-provider'), u=document.getElementById('cop-url'), m=document.getElementById('cop-model');
       if(sel) localStorage.setItem(COP_LS.p, sel.value);
@@ -622,7 +622,7 @@
       if(m) localStorage.setItem(COP_LS.m, m.value||''); }catch(_){}
     copSyncFields(); }
   function copOpen(show){ var pn=document.getElementById('cop-panel'); if(!pn) return;
-    pn.style.display=show?'flex':'none'; if(show){ copSyncFields(); copRender(); var inp=document.getElementById('cop-input'); if(inp) inp.focus(); } }
+    pn.style.display=show?'flex':'none'; if(show){ copSyncFields(); if(copCfg().provider==='ollama'&&hasTok()) copLoadModels(false); copRender(); var inp=document.getElementById('cop-input'); if(inp) inp.focus(); } }
   function askCopilot(q){
     var inp=document.getElementById('cop-input');
     var question=(typeof q==='string')?q:((inp&&inp.value)||'').trim();
@@ -645,22 +645,28 @@
       copRender();
     }).catch(function(e){ copTx[at]={role:'err', text:'request failed: '+e}; copRender(); });
   }
-  function copTest(){ var out=document.getElementById('cop-test-out'), uEl=document.getElementById('cop-url');
+  function copSetModels(models, selected){ var sel=document.getElementById('cop-model'); if(!sel) return;
+    var cur=selected||sel.value||copCfg().model||'';
+    var list=Array.isArray(models)?models.slice():[];
+    if(cur && list.indexOf(cur)<0) list.unshift(cur);
+    if(list.length){ sel.innerHTML=list.map(function(m){ return '<option value="'+escHtml(m)+'"'+((m===cur)?' selected':'')+'>'+escHtml(m)+'</option>'; }).join(''); }
+    else { sel.innerHTML='<option value="">\u2014 Test connection to load models \u2014</option>'; } }
+  function copLoadModels(showStatus){ var out=document.getElementById('cop-test-out'), uEl=document.getElementById('cop-url'),
+      hint=document.getElementById('cop-model-hint');
     var url=((uEl&&uEl.value)||'').trim()||'http://command-center:3000';
-    if(!hasTok()){ if(out) out.innerHTML='<span class="err">connect to a live server first</span>'; return; }
-    if(out) out.innerHTML='testing '+escHtml(url)+' \u2026';
+    if(!hasTok()){ if(showStatus&&out) out.innerHTML='<span class="err">connect to a live server first</span>'; return; }
+    if(showStatus&&out) out.innerHTML='testing '+escHtml(url)+' \u2026';
+    if(hint) hint.textContent='loading\u2026';
     apiPost('copilot/ollama/test',{base_url:url}).then(function(res){
       if(res.ok && res.j && res.j.models){ var ms=res.j.models;
-        var chips=ms.map(function(mm){ return '<span class="chip" data-m="'+escHtml(mm)+'">'+escHtml(mm)+'</span>'; }).join('');
+        var saved=copCfg().model; var pick=(ms.indexOf(saved)>=0)?saved:(ms[0]||saved);
+        copSetModels(ms, pick); copSaveCfg();
+        if(hint) hint.textContent=ms.length?('('+ms.length+' available)'):'';
         var via=(res.j.url||'').replace(url,'');
-        out.innerHTML='<span class="ok">reachable</span> \u00b7 '+ms.length+' model'+(ms.length!==1?'s':'')+(via?(' \u00b7 '+escHtml(via)):'')
-          +(ms.length?('<div class="cop-chips">'+chips+'</div>'):'');
-        var cs=out.querySelectorAll('.chip');
-        for(var k=0;k<cs.length;k++){ (function(el){ el.onclick=function(){
-          var mEl=document.getElementById('cop-model'); if(mEl){ mEl.value=el.getAttribute('data-m'); copSaveCfg(); }
-          var all=out.querySelectorAll('.chip'); for(var z=0;z<all.length;z++) all[z].classList.remove('sel'); el.classList.add('sel'); }; })(cs[k]); }
-      } else { var d=(res.j&&res.j.detail)||('HTTP '+res.status); out.innerHTML='<span class="err">'+escHtml(d)+'</span>'; }
-    }).catch(function(e){ if(out) out.innerHTML='<span class="err">request failed: '+escHtml(String(e))+'</span>'; });
+        if(showStatus&&out) out.innerHTML='<span class="ok">reachable</span> \u00b7 '+ms.length+' model'+(ms.length!==1?'s':'')+(via?(' \u00b7 '+escHtml(via)):'');
+      } else { var d=(res.j&&res.j.detail)||('HTTP '+res.status); if(hint) hint.textContent='';
+        if(showStatus&&out) out.innerHTML='<span class="err">'+escHtml(d)+'</span>'; }
+    }).catch(function(e){ if(hint) hint.textContent=''; if(showStatus&&out) out.innerHTML='<span class="err">request failed: '+escHtml(String(e))+'</span>'; });
   }
   function copSaveKey(){ var k=document.getElementById('cop-key'), out=document.getElementById('cop-key-out');
     if(!hasTok()){ if(out) out.innerHTML='<span class="err">connect to a live server first</span>'; return; }
@@ -680,7 +686,7 @@
     if(sel) sel.onchange=copSaveCfg;
     if(u) u.addEventListener('change', copSaveCfg);
     if(m) m.addEventListener('change', copSaveCfg);
-    var test=document.getElementById('cop-test'); if(test) test.onclick=copTest;
+    var test=document.getElementById('cop-test'); if(test) test.onclick=function(){ copLoadModels(true); };
     var ksave=document.getElementById('cop-key-save'); if(ksave) ksave.onclick=copSaveKey;
     var kin=document.getElementById('cop-key'); if(kin) kin.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); copSaveKey(); } });
     if(send) send.onclick=function(){ askCopilot(); };
