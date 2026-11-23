@@ -15,6 +15,7 @@ from .events import Event, EventBus
 from .loader import Loader
 from .module_base import Module
 from .options import OptionError
+from .pivot import PivotManager
 from .scope import Scope
 from .sessions import SessionManager
 
@@ -47,6 +48,7 @@ class Framework:
         self.store.mark_running_interrupted()
         self.loader = Loader()
         self.scope = Scope()
+        self.pivots = PivotManager(self.scope, self.events)
         # session journals: opt-in, and never in the Live edition (which keeps no logs)
         self.sessions = SessionManager(
             self.store, self.events,
