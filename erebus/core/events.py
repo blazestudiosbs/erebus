@@ -19,6 +19,7 @@ FINDING_NEW = "finding.new"
 SESSION_OPEN = "session.open"
 SESSION_CLOSE = "session.close"
 EVIDENCE_ADDED = "evidence.added"
+CRED_FOUND = "cred.found"
 LOG = "log"
 
 

@@ -219,6 +219,18 @@ def create_app(framework: Any, token: str | None = None,
         """Persisted job history (newest first): module, target, status, timing."""
         return {"jobs": [dict(r) for r in framework.store.jobs()]}
 
+    @app.get("/credentials")
+    async def list_credentials() -> dict[str, Any]:
+        """Discovered credentials. Secret VALUES are redacted here; the datastore
+        keeps them, but they are never sent over the wire or shown in the UI."""
+        out = []
+        for r in framework.store.credentials():
+            d = dict(r)
+            d["has_secret"] = bool(d.get("secret"))
+            d["secret"] = "set" if d.get("secret") else ""
+            out.append(d)
+        return {"credentials": out}
+
     @app.post("/jobs", dependencies=[Depends(require_token)])
     async def start_job(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
         key = str(payload.get("module", "")).strip()
