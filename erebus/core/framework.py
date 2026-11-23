@@ -1,7 +1,6 @@
 """The Framework object: wires datastore, event bus, loader, scope, and the job runner."""
 from __future__ import annotations
 
-import itertools
 import threading
 from typing import Any
 
@@ -44,6 +43,8 @@ class Framework:
             raise ValueError(f"unknown edition {edition!r}; expected one of {EDITIONS}")
         self.events = EventBus()
         self.store = Store(store_path)
+        # a job left running when a prior process exited is stale
+        self.store.mark_running_interrupted()
         self.loader = Loader()
         self.scope = Scope()
         # session journals: opt-in, and never in the Live edition (which keeps no logs)
@@ -61,7 +62,6 @@ class Framework:
         # HTTP transport for connectors; None = stdlib urllib. Tests inject a fake.
         self.http_transport: Transport | None = None
         self._jobs: dict[int, threading.Thread] = {}
-        self._jid = itertools.count(1)
         # mirror every event into the store's append-only event log (activity-log backing)
         self.events.subscribe(None, self.store.log_event)
         # JSONL activity log: opt-in, and never in the Live edition (which keeps no logs)
@@ -99,20 +99,24 @@ class Framework:
         if targets:
             self.scope.check(targets)  # raises ScopeError if out of scope
 
-        jid = next(self._jid)
+        key = f"{module.type.value}/{module.name}"
+        redacted = redact_options(module.datastore.as_dict())
+        jid = self.store.add_job(module.name, key=key,
+                                 target=", ".join(targets), options=redacted)
 
         def _run() -> None:
+            self.store.set_job_status(jid, "running")
             self.events.publish(Event(ev.MODULE_START, {
-                "module": module.name, "job": jid,
-                "key": f"{module.type.value}/{module.name}",
-                "options": redact_options(module.datastore.as_dict()),
+                "module": module.name, "job": jid, "key": key, "options": redacted,
             }))
             try:
                 module.run()
+                self.store.set_job_status(jid, "done")
                 self.events.publish(
                     Event(ev.MODULE_COMPLETE, {"module": module.name, "job": jid})
                 )
             except Exception as exc:  # noqa: BLE001 - surface as an error event, don't crash
+                self.store.set_job_status(jid, "error", error=str(exc))
                 self.events.publish(
                     Event(ev.MODULE_ERROR, {"module": module.name, "job": jid, "error": str(exc)})
                 )

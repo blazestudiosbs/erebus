@@ -2,10 +2,20 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
+from pathlib import Path
 from typing import Any
+
+
+def default_store_path() -> str:
+    """Workstation engagement DB (~/.erebus/lab.db), created on demand."""
+    base = Path(os.environ.get("EREBUS_HOME", "~/.erebus")).expanduser()
+    base.mkdir(parents=True, exist_ok=True)
+    return str(base / "lab.db")
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS targets(
@@ -26,6 +36,10 @@ CREATE TABLE IF NOT EXISTS events(
 CREATE TABLE IF NOT EXISTS evidence(
   id INTEGER PRIMARY KEY, ref TEXT, host TEXT, module TEXT, kind TEXT,
   name TEXT, size INTEGER, note TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS jobs(
+  id INTEGER PRIMARY KEY, module TEXT, key TEXT, target TEXT, options TEXT,
+  status TEXT, error TEXT, started REAL, ended REAL);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 """
 
 
@@ -130,3 +144,49 @@ class Store:
     def event_rows(self) -> list[sqlite3.Row]:
         """The append-only event log, oldest first."""
         return self.db.execute("SELECT * FROM events ORDER BY ts, rowid").fetchall()
+
+    def recent_events(self, limit: int = 200) -> list[sqlite3.Row]:
+        """The most recent events, returned oldest-first for replay on reconnect."""
+        rows = self.db.execute(
+            "SELECT * FROM events ORDER BY ts DESC, rowid DESC LIMIT ?", (int(limit),)
+        ).fetchall()
+        return list(reversed(rows))
+
+    # -- jobs ---------------------------------------------------------------
+    def add_job(self, module: str, key: str = "", target: str = "",
+                options: Any = None) -> int:
+        """Record a newly-queued job and return its persistent id."""
+        with self._lock:
+            cur = self.db.execute(
+                "INSERT INTO jobs(module,key,target,options,status,started) "
+                "VALUES(?,?,?,?,?,?)",
+                (module, key, target, json.dumps(options or {}, default=str),
+                 "queued", time.time()),
+            )
+            self.db.commit()
+            return int(cur.lastrowid or 0)
+
+    def set_job_status(self, jid: int, status: str, error: str | None = None) -> None:
+        """Advance a job's status; stamp ``ended`` for terminal states."""
+        terminal = status in ("done", "error", "interrupted")
+        with self._lock:
+            self.db.execute(
+                "UPDATE jobs SET status=?, error=?, ended=? WHERE id=?",
+                (status, error, time.time() if terminal else None, int(jid)),
+            )
+            self.db.commit()
+
+    def jobs(self) -> list[sqlite3.Row]:
+        """All jobs, most recent first."""
+        return self.db.execute("SELECT * FROM jobs ORDER BY id DESC").fetchall()
+
+    def mark_running_interrupted(self) -> int:
+        """On startup, any job left 'queued'/'running' from a prior process is stale."""
+        with self._lock:
+            cur = self.db.execute(
+                "UPDATE jobs SET status='interrupted', ended=? "
+                "WHERE status IN ('queued','running')",
+                (time.time(),),
+            )
+            self.db.commit()
+            return int(cur.rowcount or 0)

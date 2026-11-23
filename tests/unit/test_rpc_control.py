@@ -263,3 +263,30 @@ def test_ollama_test_reports_401_when_auth_required(monkeypatch):
     with _client(Framework()) as c:
         r = c.post("/copilot/ollama/test", json={"base_url": "http://cc:3000"}, headers=AUTH)
         assert r.status_code == 401 and "API key" in r.json()["detail"]
+
+
+def test_jobs_endpoint_lists_history():
+    fw = _seed()
+    jid = fw.store.add_job("portscan", key="auxiliary/scanner/portscan",
+                           target="127.0.0.1")
+    fw.store.set_job_status(jid, "done")
+    with _client(fw) as c:
+        jobs = c.get("/jobs").json()["jobs"]
+        assert jobs and jobs[0]["module"] == "portscan"
+        assert jobs[0]["status"] == "done"
+
+
+def test_ws_replays_recent_events():
+    fw = _seed()
+
+    class _E:
+        id, type, data, ts = "ev1", "finding.new", {"host": "127.0.0.1"}, 1.0
+
+    fw.store.log_event(_E())
+    with _client(fw) as c:
+        with c.websocket_connect(f"/ws/events?token={TOKEN}") as ws:
+            first = ws.receive_json()
+            assert first["type"] == "graph.snapshot"
+            replayed = ws.receive_json()
+            assert replayed.get("replay") is True
+            assert replayed["type"] == "finding.new"

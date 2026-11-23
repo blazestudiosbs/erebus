@@ -260,7 +260,9 @@ def main() -> None:
     rpc = sub.add_parser("rpc", help="serve live state to the 3D dashboard")
     rpc.add_argument("--host", default="127.0.0.1")
     rpc.add_argument("--port", type=int, default=8777)
-    rpc.add_argument("--store", default=":memory:", help="framework store path")
+    rpc.add_argument("--store", default=None,
+                     help="framework store path (default: ~/.erebus/lab.db; "
+                          ":memory: for amnesic)")
     rpc.add_argument("--edition", choices=["workstation", "live"], default="workstation",
                      help="live keeps no logs")
     rpc.add_argument("--log", default=None, metavar="PATH",
@@ -357,7 +359,11 @@ def main() -> None:
         from .rpc.server import serve
         if args.edition == "live":
             raise SystemExit("error: the live (amnesic) edition does not serve the dashboard")
-        fw = Framework(store_path=args.store, edition=args.edition, log_path=args.log,
+        from .core.datastore import default_store_path
+        _store = args.store or default_store_path()
+        if _store != ":memory:":
+            print(f"datastore: {_store} (persists across restarts)")
+        fw = Framework(store_path=_store, edition=args.edition, log_path=args.log,
                        journal_dir=args.journal_dir, evidence_dir=args.evidence_dir)
         from .lib.term import link as _link
         _url = f"http://{args.host}:{args.port}"

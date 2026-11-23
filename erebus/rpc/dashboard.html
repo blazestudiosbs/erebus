@@ -181,13 +181,21 @@
   .cop-keyrow input{ flex:1; }
   .cop-keybtn{ background:#1a1030; color:var(--accent); border:1px solid #3a2d55; border-radius:7px; padding:0 13px; font-size:12px; cursor:pointer; white-space:nowrap; }
   .cop-keybtn:hover{ background:#241640; }
+  .jtbl{ width:100%; border-collapse:collapse; font-size:12px; }
+  .jtbl th{ text-align:left; padding:6px 10px; color:#8a7fb0; font-weight:600; border-bottom:1px solid #2a2340; position:sticky; top:0; background:rgba(16,12,28,0.95); }
+  .jtbl td{ padding:7px 10px; border-bottom:1px solid #201a33; vertical-align:top; }
+  .jtbl tr:hover td{ background:rgba(90,70,160,0.08); }
+  .jnum{ color:#6f6690; font-variant-numeric:tabular-nums; }
+  .jmut{ color:#6f6690; }
+  .jbadge{ display:inline-block; padding:1px 8px; border:1px solid; border-radius:999px; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .jerr{ margin-top:4px; color:#ff8fa3; font-size:11px; max-width:420px; word-break:break-word; }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Research</span><span>Reports</span><span>Notes</span><span>Terminal</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Jobs</span><span>Research</span><span>Reports</span><span>Notes</span><span>Terminal</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -244,6 +252,13 @@
         <h2>Findings</h2>
         <p class="psub">Live findings, most severe first. Updates as modules report.</p>
         <div id="find-list"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="view-panel" id="jobsview" style="display:none">
+      <div class="pwrap">
+        <h2>Jobs</h2>
+        <p class="psub">Every module run, newest first &mdash; survives reconnects and restarts. A run left open when the server stopped shows as <b>interrupted</b>.</p>
+        <div id="jobs-list"><div class="empty">loading&hellip;</div></div>
       </div>
     </div>
     <div class="view-panel" id="researchview" style="display:none">
@@ -337,7 +352,7 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Jobs:'jobsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   var curView='Flow', pollTimer=null;
   function setView(name){
     if(name!=='Flow' && !PANELS[name]) return;
@@ -352,6 +367,7 @@
     if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
     else if(name==='Modules'){ loadModules(); }
     else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
+    else if(name==='Jobs'){ loadJobs(); pollTimer=setInterval(loadJobs,3000); }
     else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
     else if(name==='Reports'){ repStatus(''); }
     else if(name==='Notes'){ loadNotes(); }
@@ -497,6 +513,28 @@
       var k=decodeURIComponent(el.getAttribute('data-k')); findOpen[k]=!findOpen[k]; renderFindings({findings:FINDINGS}); }; })(items[j]); }
   }
 
+  // ---- Jobs tab (persisted run history) --------------------------------
+  function jobStatusColor(st){ return ({queued:'#8a7fb0', running:'#4db5ff', done:'#36d399',
+    error:'#ff5c7a', interrupted:'#f2b84b'})[st] || '#8a7fb0'; }
+  function jobDur(j){ if(!j.started) return ''; var end=j.ended||(Date.now()/1000);
+    var secs=Math.max(0, Math.round(end-j.started)); if(secs<60) return secs+'s';
+    var m=Math.floor(secs/60); return m+'m'+(secs%60)+'s'; }
+  function loadJobs(){ fetch('jobs',{cache:'no-store'}).then(function(r){return r.json();}).then(renderJobs)
+    .catch(function(){ var b=document.getElementById('jobs-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function renderJobs(d){ var box=document.getElementById('jobs-list'); if(!box) return;
+    var js=(d.jobs||[]);
+    if(!js.length){ box.innerHTML='<div class="empty">no jobs yet - start a module from the Targets or Modules tab</div>'; return; }
+    box.innerHTML='<table class="jtbl"><thead><tr><th>#</th><th>module</th><th>target</th><th>status</th><th>took</th><th>when</th></tr></thead><tbody>'
+      +js.map(function(j){ var st=String(j.status||'queued');
+        var when=j.started?new Date(j.started*1000).toLocaleString():'';
+        var tgt=escHtml(j.target||'');
+        var err=(st==='error'&&j.error)?('<div class="jerr">'+escHtml(j.error)+'</div>'):'';
+        return '<tr><td class="jnum">'+j.id+'</td><td>'+escHtml(j.key||j.module||'')+'</td>'
+          +'<td>'+(tgt||'<span class="jmut">-</span>')+'</td>'
+          +'<td><span class="jbadge" style="color:'+jobStatusColor(st)+';border-color:'+jobStatusColor(st)+'">'+st+'</span>'+err+'</td>'
+          +'<td>'+jobDur(j)+'</td><td class="jmut">'+when+'</td></tr>'; }).join('')
+      +'</tbody></table>'; }
+
   // ---- Notes tab (living, persisted notepad) ---------------------------
   var notesTimer=null, notesLoaded=false;
   function notesStatus(msg,cls){ var st=document.getElementById('notes-status'), dt=document.getElementById('notes-dot');
@@ -592,7 +630,8 @@
   // ---- live hook: refresh data views + scope as events arrive ----------
   window.__ev=function(m){ var t=(m&&m.type)||'';
     if(t.indexOf('scope')>=0){ loadScope(); }
-    if(curView==='Findings' && (t.indexOf('finding')>=0||t.indexOf('module')>=0)){ loadFindings(); } };
+    if(curView==='Findings' && (t.indexOf('finding')>=0||t.indexOf('module')>=0)){ loadFindings(); }
+    if(curView==='Jobs' && t.indexOf('module')>=0){ loadJobs(); } };
 
   // ---- copilot (floating widget, persistent across all tabs) ---------------
   function escHtml(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
