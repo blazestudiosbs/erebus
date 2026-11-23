@@ -169,6 +169,14 @@
   .cop-settings label{ display:block; margin:7px 0 3px; color:#6e6a85; }
   .cop-settings select, .cop-settings input{ width:100%; background:rgba(16,12,28,0.9); border:1px solid #2a2340; border-radius:7px; padding:6px 9px; color:#e6e1ff; font-size:12px; outline:none; font-family:ui-monospace,monospace; }
   .cop-settings select:focus, .cop-settings input:focus{ border-color:var(--accent); }
+  .cop-testbtn{ margin-top:10px; width:100%; background:#1a1030; color:var(--accent); border:1px solid #3a2d55; border-radius:7px; padding:7px; font-size:12px; cursor:pointer; }
+  .cop-testbtn:hover{ background:#241640; }
+  .cop-test-out{ margin-top:8px; font-size:11px; color:#8a81ad; line-height:1.5; word-break:break-word; }
+  .cop-test-out .ok{ color:#5dffa5; } .cop-test-out .err{ color:#ff9d2e; }
+  .cop-chips{ display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+  .cop-chips .chip{ background:rgba(26,16,48,0.7); border:1px solid #2a2340; border-radius:6px; padding:3px 8px; color:#cfc6ef; cursor:pointer; font-family:ui-monospace,monospace; font-size:11px; }
+  .cop-chips .chip:hover{ border-color:var(--accent); color:var(--accent); }
+  .cop-chips .chip.sel{ border-color:var(--accent); color:var(--accent); }
 </style>
 </head>
 <body>
@@ -304,6 +312,8 @@
     <div id="cop-ollama-fields">
       <label>Ollama URL</label><input id="cop-url" placeholder="http://command-center:3000" autocomplete="off" spellcheck="false"/>
       <label>Model</label><input id="cop-model" placeholder="llama3" autocomplete="off" spellcheck="false"/>
+      <button id="cop-test" class="cop-testbtn">Test connection</button>
+      <div id="cop-test-out" class="cop-test-out"></div>
     </div>
   </div>
   <div class="cop-body" id="cop-body"></div>
@@ -626,6 +636,23 @@
       copRender();
     }).catch(function(e){ copTx[at]={role:'err', text:'request failed: '+e}; copRender(); });
   }
+  function copTest(){ var out=document.getElementById('cop-test-out'), uEl=document.getElementById('cop-url');
+    var url=((uEl&&uEl.value)||'').trim()||'http://command-center:3000';
+    if(!hasTok()){ if(out) out.innerHTML='<span class="err">connect to a live server first</span>'; return; }
+    if(out) out.innerHTML='testing '+escHtml(url)+' \u2026';
+    apiPost('copilot/ollama/test',{base_url:url}).then(function(res){
+      if(res.ok && res.j && res.j.models){ var ms=res.j.models;
+        var chips=ms.map(function(mm){ return '<span class="chip" data-m="'+escHtml(mm)+'">'+escHtml(mm)+'</span>'; }).join('');
+        var via=(res.j.url||'').replace(url,'');
+        out.innerHTML='<span class="ok">reachable</span> \u00b7 '+ms.length+' model'+(ms.length!==1?'s':'')+(via?(' \u00b7 '+escHtml(via)):'')
+          +(ms.length?('<div class="cop-chips">'+chips+'</div>'):'');
+        var cs=out.querySelectorAll('.chip');
+        for(var k=0;k<cs.length;k++){ (function(el){ el.onclick=function(){
+          var mEl=document.getElementById('cop-model'); if(mEl){ mEl.value=el.getAttribute('data-m'); copSaveCfg(); }
+          var all=out.querySelectorAll('.chip'); for(var z=0;z<all.length;z++) all[z].classList.remove('sel'); el.classList.add('sel'); }; })(cs[k]); }
+      } else { var d=(res.j&&res.j.detail)||('HTTP '+res.status); out.innerHTML='<span class="err">'+escHtml(d)+'</span>'; }
+    }).catch(function(e){ if(out) out.innerHTML='<span class="err">request failed: '+escHtml(String(e))+'</span>'; });
+  }
   (function(){ var fab=document.getElementById('cop-fab'), x=document.getElementById('cop-close'),
       gear=document.getElementById('cop-gear'), send=document.getElementById('cop-send'),
       sug=document.getElementById('cop-suggest'), i=document.getElementById('cop-input'),
@@ -636,6 +663,7 @@
     if(sel) sel.onchange=copSaveCfg;
     if(u) u.addEventListener('change', copSaveCfg);
     if(m) m.addEventListener('change', copSaveCfg);
+    var test=document.getElementById('cop-test'); if(test) test.onclick=copTest;
     if(send) send.onclick=function(){ askCopilot(); };
     if(sug) sug.onclick=function(){ askCopilot(''); };
     if(i) i.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); askCopilot(); } }); })();

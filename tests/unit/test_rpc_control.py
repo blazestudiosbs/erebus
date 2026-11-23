@@ -194,3 +194,35 @@ def test_copilot_ollama_needs_no_key():
                                      "model": "llama3", "base_url": "http://127.0.0.1:9"},
                    headers=AUTH)
         assert r.status_code == 502
+
+
+def test_ollama_test_lists_models_via_v1(monkeypatch):
+    from erebus.connectors import base as basemod
+
+    def fake_get_json(self, path, params=None, secret_params=None):
+        if path == "/v1/models":
+            return {"data": [{"id": "llama3.1"}, {"id": "mistral"}]}
+        raise basemod.ConnectorError("404")
+
+    monkeypatch.setattr(basemod.Connector, "get_json", fake_get_json)
+    with _client(Framework()) as c:
+        unauth = c.post("/copilot/ollama/test", json={"base_url": "http://cc:3000"})
+        assert unauth.status_code == 401
+        r = c.post("/copilot/ollama/test", json={"base_url": "http://cc:3000"}, headers=AUTH).json()
+    assert r["ok"] and r["models"] == ["llama3.1", "mistral"] and r["url"].endswith("/v1/models")
+
+
+def test_ollama_test_falls_back_to_api_tags(monkeypatch):
+    from erebus.connectors import base as basemod
+
+    def fake_get_json(self, path, params=None, secret_params=None):
+        if path == "/v1/models":
+            raise basemod.ConnectorError("no openai endpoint")
+        if path == "/api/tags":
+            return {"models": [{"name": "qwen2.5"}, {"name": "phi3"}]}
+        raise basemod.ConnectorError("x")
+
+    monkeypatch.setattr(basemod.Connector, "get_json", fake_get_json)
+    with _client(Framework()) as c:
+        r = c.post("/copilot/ollama/test", json={"base_url": "http://h"}, headers=AUTH).json()
+    assert r["models"] == ["qwen2.5", "phi3"] and r["url"].endswith("/api/tags")
