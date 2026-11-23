@@ -185,3 +185,12 @@ def test_console_runs_erebus_commands_and_blocks_shell():
         shell = c.post("/console", json={"command": "!ls"}, headers=AUTH).json()["output"]
         quit_ = c.post("/console", json={"command": "exit"}, headers=AUTH).json()["output"]
         assert "not available" in shell and "not available" in quit_
+
+
+def test_copilot_ollama_needs_no_key():
+    # ollama requires no API key; an unreachable server yields 502 (not 400/401/503)
+    with _client(Framework()) as c:
+        r = c.post("/copilot", json={"question": "x", "provider": "ollama",
+                                     "model": "llama3", "base_url": "http://127.0.0.1:9"},
+                   headers=AUTH)
+        assert r.status_code == 502

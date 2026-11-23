@@ -296,12 +296,15 @@ def create_app(framework: Any, token: str | None = None,
             "Given the engagement state, what should I do next? Suggest concrete next "
             "steps and which Erebus modules to run. Be brief.")
         provider = str(payload.get("provider", "anthropic")).strip() or "anthropic"
-        if provider not in ("anthropic", "openai"):
+        if provider not in ("anthropic", "openai", "ollama"):
             raise HTTPException(
                 status_code=400,
-                detail=f"unknown provider {provider!r}; use 'anthropic' or 'openai'")
+                detail=f"unknown provider {provider!r}; use anthropic, openai or ollama")
+        model = str(payload.get("model", "")).strip() or None
+        base_url = str(payload.get("base_url", "")).strip() or None
         try:
-            conn = LLMConnector(framework.vault, provider=provider,
+            conn = LLMConnector(framework.vault, provider=provider, model=model,
+                                base_url=base_url,
                                 offline=bool(framework.config.get("offline")),
                                 tor=bool(framework.config.get("tor")))
             answer = Copilot(framework, conn).ask(question)

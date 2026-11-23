@@ -133,7 +133,9 @@
   .copilot-panel{ position:fixed; right:20px; bottom:84px; z-index:50; width:360px; max-width:calc(100vw - 40px); height:460px; max-height:calc(100vh - 120px); display:flex; flex-direction:column; background:rgba(14,11,24,0.98); border:1px solid #2a2340; border-radius:14px; box-shadow:0 16px 50px rgba(0,0,0,0.6); overflow:hidden; }
   .cop-head{ display:flex; align-items:center; gap:8px; padding:11px 14px; border-bottom:1px solid #1b1630; font-size:13px; color:#e6e1ff; }
   .cop-head .cpimg{ width:22px; height:22px; border-radius:6px; image-rendering:pixelated; }
-  .cop-head .cop-x{ margin-left:auto; cursor:pointer; color:#6e6a85; font-size:19px; line-height:1; }
+  .cop-head .cop-gear{ margin-left:auto; cursor:pointer; color:#6e6a85; font-size:13px; }
+  .cop-head .cop-gear:hover{ color:var(--accent); }
+  .cop-head .cop-x{ margin-left:12px; cursor:pointer; color:#6e6a85; font-size:19px; line-height:1; }
   .cop-head .cop-x:hover{ color:#e6e1ff; }
   .cop-body{ flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
   .cop-hint{ color:#6e6a85; font-size:12.5px; line-height:1.5; }
@@ -163,6 +165,10 @@
   .notes-pv .nl{ margin:2px 0; } .notes-pv .nblank{ height:8px; }
   .hl-cve{ color:#c9a3ff; } .hl-kev{ color:#ff6a6a; font-weight:700; } .hl-host{ color:#7be8ff; }
   .hl-critical{ color:#ff3df5; font-weight:600; } .hl-high{ color:#ff6a6a; } .hl-medium{ color:#ff9d2e; } .hl-low{ color:#22e0ff; } .hl-info{ color:#8a93a3; }
+  .cop-settings{ padding:10px 14px; border-bottom:1px solid #1b1630; background:rgba(10,8,18,0.55); font-size:11.5px; }
+  .cop-settings label{ display:block; margin:7px 0 3px; color:#6e6a85; }
+  .cop-settings select, .cop-settings input{ width:100%; background:rgba(16,12,28,0.9); border:1px solid #2a2340; border-radius:7px; padding:6px 9px; color:#e6e1ff; font-size:12px; outline:none; font-family:ui-monospace,monospace; }
+  .cop-settings select:focus, .cop-settings input:focus{ border-color:var(--accent); }
 </style>
 </head>
 <body>
@@ -291,7 +297,15 @@
 </div>
 <div class="copilot-fab" id="cop-fab" title="Ask Erebus copilot"><img src="copilot.png" alt="copilot"/></div>
 <div class="copilot-panel" id="cop-panel" style="display:none">
-  <div class="cop-head"><img src="copilot.png" class="cpimg" alt=""/><span>Erebus copilot</span><span class="cop-x" id="cop-close">&times;</span></div>
+  <div class="cop-head"><img src="copilot.png" class="cpimg" alt=""/><span>Erebus copilot</span><span class="cop-gear" id="cop-gear" title="model settings">&#9881;</span><span class="cop-x" id="cop-close">&times;</span></div>
+  <div class="cop-settings" id="cop-settings" style="display:none">
+    <label>Model provider</label>
+    <select id="cop-provider"><option value="ollama">Ollama (local)</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option></select>
+    <div id="cop-ollama-fields">
+      <label>Ollama URL</label><input id="cop-url" placeholder="http://command-center:3000" autocomplete="off" spellcheck="false"/>
+      <label>Model</label><input id="cop-model" placeholder="llama3" autocomplete="off" spellcheck="false"/>
+    </div>
+  </div>
   <div class="cop-body" id="cop-body"></div>
   <div class="cop-foot"><input id="cop-input" placeholder="Ask Erebus&hellip;" autocomplete="off" spellcheck="false"/><button id="cop-send">Ask</button><button id="cop-suggest" class="sec">Suggest</button></div>
 </div>
@@ -575,27 +589,53 @@
     }).join('');
     b.scrollTop=b.scrollHeight;
   }
+  var COP_LS={p:'erebus_cop_provider', u:'erebus_cop_ollama_url', m:'erebus_cop_ollama_model'};
+  function copCfg(){ var p='ollama', u='http://command-center:3000', m='llama3';
+    try{ p=localStorage.getItem(COP_LS.p)||p; u=localStorage.getItem(COP_LS.u)||u; m=localStorage.getItem(COP_LS.m)||m; }catch(_){}
+    return {provider:p, url:u, model:m}; }
+  function copSyncFields(){ var cfg=copCfg();
+    var sel=document.getElementById('cop-provider'), of=document.getElementById('cop-ollama-fields'),
+        u=document.getElementById('cop-url'), m=document.getElementById('cop-model');
+    if(sel) sel.value=cfg.provider; if(of) of.style.display=(cfg.provider==='ollama')?'block':'none';
+    if(u&&!u.value) u.value=cfg.url; if(m&&!m.value) m.value=cfg.model; }
+  function copSaveCfg(){ try{
+      var sel=document.getElementById('cop-provider'), u=document.getElementById('cop-url'), m=document.getElementById('cop-model');
+      if(sel) localStorage.setItem(COP_LS.p, sel.value);
+      if(u) localStorage.setItem(COP_LS.u, u.value||'');
+      if(m) localStorage.setItem(COP_LS.m, m.value||''); }catch(_){}
+    copSyncFields(); }
   function copOpen(show){ var pn=document.getElementById('cop-panel'); if(!pn) return;
-    pn.style.display=show?'flex':'none'; if(show){ copRender(); var inp=document.getElementById('cop-input'); if(inp) inp.focus(); } }
+    pn.style.display=show?'flex':'none'; if(show){ copSyncFields(); copRender(); var inp=document.getElementById('cop-input'); if(inp) inp.focus(); } }
   function askCopilot(q){
     var inp=document.getElementById('cop-input');
     var question=(typeof q==='string')?q:((inp&&inp.value)||'').trim();
     if(!hasTok()){ copTx.push({role:'err',text:'Connect to a live server first (run  erebus console --serve  and open the printed URL).'}); copRender(); return; }
+    var cfg=copCfg();
+    var body={question:question, provider:cfg.provider};
+    if(cfg.provider==='ollama'){ body.base_url=cfg.url; body.model=cfg.model; }
     copTx.push({role:'you', text:question||'suggest next steps'});
     copTx.push({role:'bot', text:'thinking\u2026'}); var at=copTx.length-1; copRender();
     if(inp) inp.value='';
-    apiPost('copilot',{question:question}).then(function(res){
-      if(res.ok){ copTx[at]={role:'bot', text:res.j.answer||'(no answer)', provider:res.j.provider}; }
+    apiPost('copilot', body).then(function(res){
+      if(res.ok){ var lbl=res.j.provider+((cfg.provider==='ollama'&&cfg.model)?(' \u00b7 '+cfg.model):'');
+        copTx[at]={role:'bot', text:res.j.answer||'(no answer)', provider:lbl}; }
       else { var d=(res.j&&res.j.detail)||('HTTP '+res.status);
-        var hint=(res.status===503)?'  Set an LLM key:  erebus vault set anthropic  (or openai), then retry.':'';
+        var hint=(res.status===503)?'  Add a key, or switch to Ollama with the gear.':
+          ((res.status===502&&cfg.provider==='ollama')?('  Could not reach '+cfg.url+' - is Ollama running and reachable from the server?'):'');
         copTx[at]={role:'err', text:d+hint}; }
       copRender();
     }).catch(function(e){ copTx[at]={role:'err', text:'request failed: '+e}; copRender(); });
   }
   (function(){ var fab=document.getElementById('cop-fab'), x=document.getElementById('cop-close'),
-      send=document.getElementById('cop-send'), sug=document.getElementById('cop-suggest'), i=document.getElementById('cop-input');
+      gear=document.getElementById('cop-gear'), send=document.getElementById('cop-send'),
+      sug=document.getElementById('cop-suggest'), i=document.getElementById('cop-input'),
+      sel=document.getElementById('cop-provider'), u=document.getElementById('cop-url'), m=document.getElementById('cop-model');
     if(fab) fab.onclick=function(){ var pn=document.getElementById('cop-panel'); copOpen(!pn||pn.style.display==='none'); };
     if(x) x.onclick=function(){ copOpen(false); };
+    if(gear) gear.onclick=function(){ var st=document.getElementById('cop-settings'); if(st){ st.style.display=(st.style.display==='none')?'block':'none'; copSyncFields(); } };
+    if(sel) sel.onchange=copSaveCfg;
+    if(u) u.addEventListener('change', copSaveCfg);
+    if(m) m.addEventListener('change', copSaveCfg);
     if(send) send.onclick=function(){ askCopilot(); };
     if(sug) sug.onclick=function(){ askCopilot(''); };
     if(i) i.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); askCopilot(); } }); })();

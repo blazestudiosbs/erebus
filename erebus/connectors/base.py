@@ -65,13 +65,15 @@ class Connector:
 
     def __init__(self, vault: Vault, offline: bool = False, tor: bool = False,
                  transport: Transport | None = None, timeout: float = 20.0,
-                 post_transport: PostTransport | None = None) -> None:
+                 post_transport: PostTransport | None = None,
+                 allow_insecure: bool = False) -> None:
         self.vault = vault
         self.offline = offline
         self.tor = tor
         self.transport = transport or urllib_transport
         self.post_transport = post_transport or urllib_post_transport
         self.timeout = timeout
+        self.allow_insecure = allow_insecure  # permit http:// (e.g. a local Ollama on the LAN)
 
     def api_key(self) -> str:
         try:
@@ -122,7 +124,7 @@ class Connector:
             raise NetworkDisabled(
                 f"{self.name}: Tor mode is on but connectors can't route via Tor yet; "
                 "refusing to send in the clear")
-        if not self.base_url.startswith("https://"):
+        if not self.allow_insecure and not self.base_url.startswith("https://"):
             raise ConnectorError(f"{self.name}: refusing non-https base URL")
 
     def post_json(self, path: str, payload: dict[str, Any],
