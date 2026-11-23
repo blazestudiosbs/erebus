@@ -49,7 +49,8 @@
   .pill{ border:1px solid #3a2d55; border-radius:6px; padding:3px 8px; color:#cfc6ef; cursor:pointer; }
   .stream{ flex:1; position:relative; overflow:hidden; border:1px solid #1b1630; border-radius:10px; background:rgba(10,8,18,0.55); }
   .stream h4{ position:absolute; top:8px; left:11px; margin:0; z-index:2; font-size:11px; color:#8a81ad; letter-spacing:.5px; text-transform:uppercase; }
-  .stream .track{ position:absolute; top:0; left:0; right:0; padding:30px 11px 0; font-family:ui-monospace,monospace; font-size:11.5px; line-height:1.9; animation:scrollup 24s linear infinite; }
+  .stream .track{ position:absolute; top:26px; left:0; right:0; bottom:0; padding:0 11px 8px; overflow-y:auto; font-family:ui-monospace,monospace; font-size:11px; line-height:1.7; }
+  .stream .track > div{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   @keyframes scrollup{ from{ transform:translateY(0);} to{ transform:translateY(-50%);} }
   .act div{ padding:2px 0; }
   /* targets / OSINT view */
@@ -584,11 +585,31 @@
   function reindex(){ map={}; NODES.forEach(function(n){map[n.id]=n;}); }
   reindex();
 
-  function refillStream(){
-    var track=document.getElementById('track'), lines='', pool=NODES.filter(function(n){return n.t!=='core';});
-    if(!pool.length) pool=[{id:'idle',t:'module'}];
-    for(var i=0;i<30;i++){ var n=pool[i%pool.length]; var b=(Math.floor(Math.random()*1073741823)).toString(2).padStart(10,'0').slice(0,10); lines+='<div style="color:'+col(n)+'">'+b+'  '+disp(n)+'</div>'; }
-    track.innerHTML=lines+lines;
+  function _ts(){ var d=new Date(); function z(n){return ('0'+n).slice(-2);} return z(d.getHours())+':'+z(d.getMinutes())+':'+z(d.getSeconds()); }
+  function streamLine(ev){
+    var d=ev.data||{}, t=ev.type||'';
+    if(t==='log'){ var lv=d.level||'info';
+      var c=lv==='good'?'#5dffa5':(lv==='warn'?'#ff9d2e':(lv==='error'?'#ff6a6a':'#9fb4ff'));
+      var who=d.module?('['+String(d.module).split('/').pop()+'] '):'';
+      return {c:c, text:who+(d.msg||'')}; }
+    var M={'finding.new':['#ff3df5','finding'],'target.added':['#22e0ff','target +'],'service.found':['#7be8ff','service'],
+           'module.start':['#c9a3ff','start'],'module.complete':['#5dffa5','complete'],'module.error':['#ff6a6a','error'],
+           'module.progress':['#6e8bff','progress'],'session.open':['#ffe14d','session'],'scope.changed':['#c9a3ff','scope']};
+    var m=M[t]||['#8a93a3', t];
+    var detail=d.cve||d.title||d.host||d.module||'';
+    return {c:m[0], text:m[1]+(detail?('  '+detail):'')};
+  }
+  var streamLog=[], streamLive=false;
+  function streamPush(ev){ var track=document.getElementById('track'); if(!track) return;
+    if(!streamLive){ streamLog=[]; streamLive=true; }
+    var ln=streamLine(ev);
+    streamLog.push('<div style="color:'+ln.c+'"><span style="color:#4d4a60">'+_ts()+'</span>  '+escHtml(ln.text)+'</div>');
+    streamLog=streamLog.slice(-80);
+    track.innerHTML=streamLog.join(''); track.scrollTop=track.scrollHeight;
+  }
+  function refillStream(){ if(streamLive) return; var track=document.getElementById('track'); if(!track) return;
+    track.innerHTML='<div style="color:#4d4a60">waiting for live activity\u2026</div>'
+      +'<div style="color:#4d4a60">run a scan from the Targets tab to see events stream here</div>';
   }
   refillStream();
 
@@ -705,10 +726,10 @@
 
   var actEl=document.getElementById('activity'), actLog=[];
   function pushActivity(ev){
-    var color=ev.type.indexOf('finding')>=0?'#ff3df5':(ev.type.indexOf('error')>=0?'#ff9d2e':(ev.type.indexOf('complete')>=0?'#5dffa5':'#22e0ff'));
-    var txt=ev.type+(ev.data&&(ev.data.module||ev.data.cve||ev.data.host)?' · '+(ev.data.cve||ev.data.module||ev.data.host):'');
-    actLog.unshift('<div style="color:'+color+'">'+txt+'</div>'); actLog=actLog.slice(0,6);
+    var ln=streamLine(ev);
+    actLog.unshift('<div style="color:'+ln.c+'">'+escHtml(ln.text)+'</div>'); actLog=actLog.slice(0,6);
     actEl.innerHTML=actLog.join('');
+    streamPush(ev);
   }
 
   var ws=null, es=null, refetchTimer=null, reconnTimer=null, wsFails=0, closing=false;

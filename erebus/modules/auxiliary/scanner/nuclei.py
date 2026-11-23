@@ -55,9 +55,27 @@ class NucleiScan(Auxiliary):
             argv += ["-t", templates]
         argv += shlex.split(str(self.opt("ARGS")))
 
-        self.info_("running: " + " ".join(argv))
+        self.info_("running (live): " + " ".join(argv))
+        hosts: set[str] = set()
+        total = 0
+
+        def on_line(line: str) -> None:
+            # nuclei -jsonl emits one finding per line as it discovers them
+            nonlocal total
+            parsed = parse_nuclei_jsonl(line)
+            for f in parsed.findings:
+                if f.host not in hosts:
+                    hosts.add(f.host)
+                    self.add_target(f.host, "scanned")
+                self.add_finding(f.host, f.title, severity=f.severity, cve=f.cve,
+                                 attack=f.attack, evidence_ref=f.matched_at)
+                total += 1
+                cve = f"  {f.cve}" if f.cve else ""
+                self.good(f"{f.host}  [{f.severity}] {f.title}{cve}")
+
         try:
-            result = tools.run_tool(argv, timeout=float(str(self.opt("TIMEOUT", 900))))
+            result = tools.run_tool_stream(argv, on_line,
+                                           timeout=float(str(self.opt("TIMEOUT", 900))))
         except tools.ToolNotFound:
             self.error("nuclei not found on PATH (set NUCLEIBIN or install nuclei)")
             return
@@ -65,20 +83,6 @@ class NucleiScan(Auxiliary):
             self.error("nuclei timed out (raise TIMEOUT)")
             return
 
-        parsed = parse_nuclei_jsonl(result.stdout)
-        total = len(parsed.findings)
-        self.info_(f"nuclei reported {total} finding(s)")
-        hosts: set[str] = set()
-        for f in parsed.findings:
-            if f.host not in hosts:
-                hosts.add(f.host)
-                self.add_target(f.host, "scanned")
-            self.add_finding(f.host, f.title, severity=f.severity, cve=f.cve,
-                             attack=f.attack, evidence_ref=f.matched_at)
-            cve = f"  {f.cve}" if f.cve else ""
-            self.good(f"{f.host}  [{f.severity}] {f.title}{cve}")
-        if parsed.skipped:
-            self.warn(f"skipped {parsed.skipped} unparseable line(s)")
         if total == 0 and result.rc != 0 and result.stderr.strip():
             self.warn(result.stderr.strip().splitlines()[-1])
         self.good(f"done: {total} finding(s) on {len(hosts)} host(s)")
