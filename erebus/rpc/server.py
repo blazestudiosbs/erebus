@@ -214,6 +214,11 @@ def create_app(framework: Any, token: str | None = None,
                             headers={"Content-Disposition": disp})
         return HTMLResponse(rpt.render_html(data, title="Erebus engagement report"))
 
+    @app.get("/jobs")
+    async def list_jobs() -> dict[str, Any]:
+        """Persisted job history (newest first): module, target, status, timing."""
+        return {"jobs": [dict(r) for r in framework.store.jobs()]}
+
     @app.post("/jobs", dependencies=[Depends(require_token)])
     async def start_job(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
         key = str(payload.get("module", "")).strip()
@@ -410,6 +415,18 @@ def create_app(framework: Any, token: str | None = None,
         out = re.sub(r"\x1b\[[0-9;]*m", "", buf.getvalue())  # strip ANSI colour
         return {"output": out}
 
+    def _recent_events(limit: int = 200) -> list:
+        """Stored events (oldest-first) to replay so a reconnecting client's feed
+        and job history are not blank after a reload."""
+        out = []
+        for r in framework.store.recent_events(limit):
+            try:
+                data = json.loads(r["data"]) if r["data"] else {}
+            except (ValueError, TypeError):
+                data = {}
+            out.append({"type": r["type"], "data": data, "replay": True})
+        return out
+
     @app.websocket("/ws/events")
     async def ws_events(ws: WebSocket) -> None:
         if not _stream_token_ok(ws):
@@ -423,6 +440,8 @@ def create_app(framework: Any, token: str | None = None,
             return
         q = bridge.add_client()
         await ws.send_text(json.dumps({"type": "graph.snapshot", "data": _graph()}))
+        for _ev in _recent_events():
+            await ws.send_text(json.dumps(_ev))
         try:
             while True:
                 await ws.send_text(json.dumps(await q.get()))
@@ -441,6 +460,8 @@ def create_app(framework: Any, token: str | None = None,
         async def gen() -> Any:
             try:
                 yield f"data: {json.dumps({'type': 'graph.snapshot', 'data': _graph()})}\n\n"
+                for _ev in _recent_events():
+                    yield f"data: {json.dumps(_ev)}\n\n"
                 while True:
                     yield f"data: {json.dumps(await q.get())}\n\n"
             finally:

@@ -316,8 +316,9 @@ class EreConsole(cmd.Cmd):
 
 def add_console_args(p: argparse.ArgumentParser) -> None:
     """Register the console's options on ``p`` (shared by ereconsole and `erebus console`)."""
-    p.add_argument("--store", default=":memory:", metavar="PATH",
-                   help="framework datastore file; persists runs (default: in-memory)")
+    p.add_argument("--store", default=None, metavar="PATH",
+                   help="framework datastore file; persists runs "
+                        "(default: ~/.erebus/lab.db; pass :memory: for amnesic)")
     p.add_argument("--edition", choices=["workstation", "live"], default="workstation",
                    help="live keeps no logs/journal/evidence/vault on disk")
     p.add_argument("--log", default=None, metavar="PATH",
@@ -346,14 +347,19 @@ def build_framework(store: str = ":memory:", edition: str = "workstation",
                      journal_dir=journal_dir, evidence_dir=evidence_dir)
 
 
-def launch(store: str = ":memory:", edition: str = "workstation", log: str | None = None,
+def launch(store: str | None = None, edition: str = "workstation", log: str | None = None,
            journal_dir: str | None = None, evidence_dir: str | None = None,
            serve: bool = False, host: str = "127.0.0.1", port: int = 8777,
            token: str | None = None, scope_file: str | None = None,
            lab: bool = False) -> None:
     """Build the framework, optionally co-host the dashboard, and run the REPL."""
+    if store is None:
+        from .core.datastore import default_store_path
+        store = ":memory:" if edition == "live" else default_store_path()
     fw = build_framework(store, edition, log, journal_dir, evidence_dir)
     print_banner(fw)
+    if store != ":memory:":
+        print(col(f"  datastore: {store} (persists across restarts)", "dim"))
     if scope_file:
         fw.scope.load(scope_file)
         print(col(f"  scope: loaded {len(fw.scope.show())} rule(s) from {scope_file}", "dim"))
