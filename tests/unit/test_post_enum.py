@@ -14,10 +14,12 @@ class FakeSession:
         self.id, self.host, self._r, self.alive = sid, host, responses, True
 
     def command(self, line: str, overall: float = 5.0, settle: float = 0.4) -> str:
-        for key, val in self._r.items():
-            if key in line:
-                return val
-        return ""
+        # match the most specific (longest) configured key that appears in the line
+        best = ""
+        for key in self._r:
+            if key in line and len(key) > len(best):
+                best = key
+        return self._r[best] if best else ""
 
 
 _NONROOT = {
@@ -91,3 +93,75 @@ def test_post_module_errors_without_session():
     fw = Framework()                       # no session injected
     finds = _run(fw, "post/linux_enum", SESSION="99")
     assert finds == {}                     # no findings; it logged an error and returned
+
+
+# --- Windows -------------------------------------------------------------
+_WIN = {
+    "whoami": "corp\\bob",
+    "whoami /priv": "SeImpersonatePrivilege  Impersonate  Enabled\n"
+                    "SeBackupPrivilege  Backup  Disabled",
+    "whoami /groups": "S-1-5-32-545",
+    "wmic service get": "Name  PathName  StartMode  State\n"
+                        "Vuln  C:\\Program Files\\x\\a b\\svc.exe  Auto  Running",
+    "AlwaysInstallElevated": "AlwaysInstallElevated REG_DWORD 0x1\n"
+                             "AlwaysInstallElevated REG_DWORD 0x1",
+    "systeminfo": "OS Name: Windows 10",
+}
+
+
+def test_windows_enum_identity_finding():
+    fw = _fw(1, "win", _WIN)
+    finds = _run(fw, "post/windows_enum", SESSION="1")
+    assert any("standard user" in t for t in finds)
+
+
+def test_windows_privesc_flags_token_aie_and_unquoted():
+    fw = _fw(1, "win", _WIN)
+    finds = _run(fw, "post/windows_privesc_check", SESSION="1")
+    assert any("SeImpersonatePrivilege enabled" in t and finds[t]["severity"] == "high"
+               for t in finds)
+    assert any("AlwaysInstallElevated" in t and finds[t]["severity"] == "critical"
+               for t in finds)
+    assert any("Unquoted service path: Vuln" in t and finds[t]["severity"] == "medium"
+               for t in finds)
+
+
+def test_windows_privesc_already_system_short_circuits():
+    fw = _fw(1, "win", {"whoami": "nt authority\\system"})
+    finds = _run(fw, "post/windows_privesc_check", SESSION="1")
+    assert any("already SYSTEM" in t for t in finds)
+    assert not any("Token privilege" in t for t in finds)
+
+
+# --- macOS ---------------------------------------------------------------
+_MAC = {
+    "id": "uid=501(bob) gid=20(staff) groups=20(staff),80(admin)",
+    "sw_vers": "ProductVersion: 14.1",
+    "dscl": "GroupMembership: root bob",
+    "groups": "staff admin",
+    "sudo -n -l": "(ALL) NOPASSWD: /usr/bin/vim",
+    "find /Library/LaunchDaemons": "/Library/LaunchDaemons/evil.plist",
+    "find / -perm -4000": "/usr/bin/find\n/usr/bin/sudo",
+}
+
+
+def test_macos_enum_admin_and_suid():
+    fw = _fw(1, "mac", _MAC)
+    finds = _run(fw, "post/macos_enum", SESSION="1")
+    assert any("admin group" in t for t in finds)
+    assert any("SUID binaries present" in t for t in finds)
+
+
+def test_macos_privesc_flags_launchdaemon_suid_sudo():
+    fw = _fw(1, "mac", _MAC)
+    finds = _run(fw, "post/macos_privesc_check", SESSION="1")
+    assert any("World-writable LaunchDaemon" in t and finds[t]["severity"] == "high"
+               for t in finds)
+    assert any(t.startswith("SUID GTFOBins binary: find") for t in finds)
+    assert any("NOPASSWD" in t and finds[t]["severity"] == "high" for t in finds)
+
+
+def test_macos_privesc_already_root_short_circuits():
+    fw = _fw(1, "mac", {"id": "uid=0(root) gid=0(wheel)"})
+    finds = _run(fw, "post/macos_privesc_check", SESSION="1")
+    assert any("already root" in t for t in finds)

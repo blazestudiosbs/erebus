@@ -9,26 +9,17 @@ the operator to verify and act on manually.
 """
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from erebus.core.module_base import CheckResult, OptionSpec, Post, Rank
 from erebus.intel import default_db_path
 from erebus.intel.db import IntelStore
-
-# Binaries that commonly grant a shell or arbitrary file read/write when SUID-root
-# or runnable via sudo (a curated GTFOBins subset).
-_GTFOBINS = {
-    "bash", "sh", "dash", "zsh", "vim", "vi", "nvim", "view", "nano", "ed", "emacs",
-    "less", "more", "man", "awk", "gawk", "find", "nmap", "perl", "python", "python2",
-    "python3", "ruby", "php", "lua", "node", "gdb", "tar", "zip", "unzip", "cp", "mv",
-    "dd", "tee", "sed", "env", "make", "socat", "ncat", "nc", "docker", "tmux",
-    "screen", "ftp", "gzip", "git", "rsync", "cpulimit", "ionice", "nice", "flock",
-}
-
-
-def _basename(path: str) -> str:
-    return path.rsplit("/", 1)[-1].strip()
+from erebus.modules.post._common import (
+    candidate_cves,
+    short_version,
+    sudo_gtfobins,
+    suid_gtfobins,
+)
 
 
 class PrivescCheck(Post):
@@ -79,8 +70,7 @@ class PrivescCheck(Post):
         # 2) GTFOBins-exploitable SUID binaries
         suid = sess.command("find / -perm -4000 -type f 2>/dev/null | head -n 200",
                             overall=25.0)
-        hits = sorted({_basename(ln) for ln in suid.splitlines()
-                       if _basename(ln) in _GTFOBINS})
+        hits = suid_gtfobins(suid)
         for b in hits:
             found += 1
             self.add_finding(host, f"SUID GTFOBins binary: {b} (potential root shell)",
@@ -91,9 +81,7 @@ class PrivescCheck(Post):
         # 3) sudo rights
         sudo = sess.command("sudo -n -l 2>/dev/null", overall=6.0)
         if sudo.strip():
-            nopasswd = "NOPASSWD" in sudo
-            sbins = sorted({_basename(m) for m in re.findall(r"/\S+", sudo)
-                            if _basename(m) in _GTFOBINS})
+            sbins, nopasswd = sudo_gtfobins(sudo)
             if sbins:
                 found += 1
                 sev = "high" if nopasswd else "medium"
@@ -123,19 +111,15 @@ class PrivescCheck(Post):
         version = rel[0].strip() if rel else ""
         if not version:
             return 0
-        base = re.match(r"[0-9]+\.[0-9]+(\.[0-9]+)?", version)
-        ver = base.group(0) if base else version
+        ver = short_version(version)
         inteldb = str(self.opt("INTELDB", "")).strip() or default_db_path()
         intel = IntelStore(inteldb)
         if intel.count() == 0:
             self.warn("intel DB empty - run 'erebus intel update' for kernel CVE lookup")
             return 0
-        rows = intel.correlate("linux kernel", ver, limit=8)
         n = 0
-        for row in rows:
+        for row in candidate_cves(intel, "linux kernel", ver, limit=8):
             sev = str(row["severity"] or "").lower()
-            if sev not in ("high", "critical"):
-                continue
             cve = str(row["id"])
             n += 1
             self.add_finding(
