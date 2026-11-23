@@ -40,6 +40,7 @@ except ModuleNotFoundError:  # fastapi is an optional extra
     _FASTAPI_OK = False
 
 from erebus.connectors.base import ConnectorError, MissingKey, NetworkDisabled
+from erebus.connectors.vault import VaultError
 from erebus.core.options import OptionError
 from erebus.core.scope import ScopeError
 
@@ -335,19 +336,48 @@ def create_app(framework: Any, token: str | None = None,
                         if isinstance(m, dict) and m.get("name")]
             return None
 
+        try:
+            key = framework.vault.get("ollama")
+        except VaultError:
+            key = None
+        hdrs = {"Authorization": f"Bearer {key}"} if key else {}
         last = ""
+        auth_required = False
         for path, extract in (("/v1/models", _openai), ("/api/tags", _tags)):
             try:
-                models = extract(conn.get_json(path))
+                models = extract(conn.get_json(path, secret_headers=hdrs))
             except NetworkDisabled as exc:
                 raise HTTPException(status_code=503, detail=str(exc)) from None
+            except MissingKey as exc:  # server replied 401/403 -> needs a key
+                auth_required = True
+                last = str(exc)
+                continue
             except ConnectorError as exc:
                 last = str(exc)
                 continue
             if models is not None:
                 return {"ok": True, "url": base + path, "models": models}
+        if auth_required:
+            raise HTTPException(
+                status_code=401,
+                detail="server requires an API key; add it in the API key field below")
         raise HTTPException(status_code=502,
                             detail=last or f"{base}: no models endpoint responded")
+
+    @app.post("/copilot/ollama/key", dependencies=[Depends(require_token)])
+    def ollama_key(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        key = str(payload.get("key", "")).strip()
+        try:
+            if key:
+                framework.vault.set("ollama", key)
+            else:
+                framework.vault.delete("ollama")
+        except VaultError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"vault unavailable: {exc}; install  pip install -e .[connectors]",
+            ) from None
+        return {"ok": True, "set": bool(key)}
 
     @app.post("/console", dependencies=[Depends(require_token)])
     def console_cmd(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006  (sync: runs in threadpool)

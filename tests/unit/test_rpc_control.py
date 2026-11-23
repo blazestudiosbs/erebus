@@ -199,7 +199,7 @@ def test_copilot_ollama_needs_no_key():
 def test_ollama_test_lists_models_via_v1(monkeypatch):
     from erebus.connectors import base as basemod
 
-    def fake_get_json(self, path, params=None, secret_params=None):
+    def fake_get_json(self, path, params=None, secret_params=None, secret_headers=None):
         if path == "/v1/models":
             return {"data": [{"id": "llama3.1"}, {"id": "mistral"}]}
         raise basemod.ConnectorError("404")
@@ -215,7 +215,7 @@ def test_ollama_test_lists_models_via_v1(monkeypatch):
 def test_ollama_test_falls_back_to_api_tags(monkeypatch):
     from erebus.connectors import base as basemod
 
-    def fake_get_json(self, path, params=None, secret_params=None):
+    def fake_get_json(self, path, params=None, secret_params=None, secret_headers=None):
         if path == "/v1/models":
             raise basemod.ConnectorError("no openai endpoint")
         if path == "/api/tags":
@@ -226,3 +226,40 @@ def test_ollama_test_falls_back_to_api_tags(monkeypatch):
     with _client(Framework()) as c:
         r = c.post("/copilot/ollama/test", json={"base_url": "http://h"}, headers=AUTH).json()
     assert r["models"] == ["qwen2.5", "phi3"] and r["url"].endswith("/api/tags")
+
+
+def test_ollama_key_set_then_sent_by_probe(monkeypatch):
+    from erebus.connectors import base as basemod
+    from erebus.connectors.vault import MemoryVault
+    fw = Framework()
+    fw.vault = MemoryVault()
+    with _client(fw) as c:
+        assert c.post("/copilot/ollama/key", json={"key": "owui-abc"}).status_code == 401
+        r = c.post("/copilot/ollama/key", json={"key": "owui-abc"}, headers=AUTH).json()
+        assert r["ok"] and r["set"] and fw.vault.get("ollama") == "owui-abc"
+
+        seen: dict = {}
+
+        def fake(self, path, params=None, secret_params=None, secret_headers=None):
+            seen["h"] = dict(secret_headers or {})
+            if path == "/v1/models":
+                return {"data": [{"id": "llama3"}]}
+            raise basemod.ConnectorError("x")
+
+        monkeypatch.setattr(basemod.Connector, "get_json", fake)
+        rr = c.post("/copilot/ollama/test",
+                    json={"base_url": "http://cc:3000"}, headers=AUTH).json()
+        assert rr["models"] == ["llama3"]
+        assert seen["h"].get("Authorization") == "Bearer owui-abc"
+
+
+def test_ollama_test_reports_401_when_auth_required(monkeypatch):
+    from erebus.connectors import base as basemod
+
+    def fake(self, path, params=None, secret_params=None, secret_headers=None):
+        raise basemod.MissingKey("base: API key rejected (HTTP 401)")
+
+    monkeypatch.setattr(basemod.Connector, "get_json", fake)
+    with _client(Framework()) as c:
+        r = c.post("/copilot/ollama/test", json={"base_url": "http://cc:3000"}, headers=AUTH)
+        assert r.status_code == 401 and "API key" in r.json()["detail"]

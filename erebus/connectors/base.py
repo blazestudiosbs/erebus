@@ -92,17 +92,19 @@ class Connector:
         return text
 
     def get_json(self, path: str, params: dict[str, str] | None = None,
-                 secret_params: dict[str, str] | None = None) -> Any:
-        """GET ``base_url + path`` and decode JSON. ``secret_params`` are never echoed."""
+                 secret_params: dict[str, str] | None = None,
+                 secret_headers: dict[str, str] | None = None) -> Any:
+        """GET ``base_url + path`` and decode JSON. Secrets are never echoed."""
         self._check_network()
 
         query = {**(params or {}), **(secret_params or {})}
         url = self.base_url + path + (f"?{urllib.parse.urlencode(query)}" if query else "")
-        secrets = list((secret_params or {}).values())
+        secrets = list((secret_params or {}).values()) + list((secret_headers or {}).values())
         safe_path = path + (f"?{urllib.parse.urlencode(params)}" if params else "")
+        headers = {"User-Agent": USER_AGENT, "Accept": "application/json",
+                   **(secret_headers or {})}
         try:
-            status, body = self.transport(url, {"User-Agent": USER_AGENT,
-                                                "Accept": "application/json"}, self.timeout)
+            status, body = self.transport(url, headers, self.timeout)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise ConnectorError(self._redact(
                 f"{self.name}: {safe_path} unreachable: {exc}", secrets)) from None
