@@ -177,6 +177,10 @@
   .cop-chips .chip{ background:rgba(26,16,48,0.7); border:1px solid #2a2340; border-radius:6px; padding:3px 8px; color:#cfc6ef; cursor:pointer; font-family:ui-monospace,monospace; font-size:11px; }
   .cop-chips .chip:hover{ border-color:var(--accent); color:var(--accent); }
   .cop-chips .chip.sel{ border-color:var(--accent); color:var(--accent); }
+  .cop-keyrow{ display:flex; gap:6px; }
+  .cop-keyrow input{ flex:1; }
+  .cop-keybtn{ background:#1a1030; color:var(--accent); border:1px solid #3a2d55; border-radius:7px; padding:0 13px; font-size:12px; cursor:pointer; white-space:nowrap; }
+  .cop-keybtn:hover{ background:#241640; }
 </style>
 </head>
 <body>
@@ -312,6 +316,9 @@
     <div id="cop-ollama-fields">
       <label>Ollama URL</label><input id="cop-url" placeholder="http://command-center:3000" autocomplete="off" spellcheck="false"/>
       <label>Model</label><input id="cop-model" placeholder="llama3" autocomplete="off" spellcheck="false"/>
+      <label>API key (only if your server requires one)</label>
+      <div class="cop-keyrow"><input id="cop-key" type="password" placeholder="paste key, then Save" autocomplete="off"/><button id="cop-key-save" class="cop-keybtn">Save</button></div>
+      <div id="cop-key-out" class="cop-test-out"></div>
       <button id="cop-test" class="cop-testbtn">Test connection</button>
       <div id="cop-test-out" class="cop-test-out"></div>
     </div>
@@ -653,6 +660,14 @@
       } else { var d=(res.j&&res.j.detail)||('HTTP '+res.status); out.innerHTML='<span class="err">'+escHtml(d)+'</span>'; }
     }).catch(function(e){ if(out) out.innerHTML='<span class="err">request failed: '+escHtml(String(e))+'</span>'; });
   }
+  function copSaveKey(){ var k=document.getElementById('cop-key'), out=document.getElementById('cop-key-out');
+    if(!hasTok()){ if(out) out.innerHTML='<span class="err">connect to a live server first</span>'; return; }
+    var val=((k&&k.value)||'').trim();
+    apiPost('copilot/ollama/key',{key:val}).then(function(res){
+      if(res.ok){ if(k) k.value=''; if(out) out.innerHTML='<span class="ok">'+(res.j.set?'key saved to the vault':'key cleared')+'</span>'; }
+      else { var d=(res.j&&res.j.detail)||('HTTP '+res.status); if(out) out.innerHTML='<span class="err">'+escHtml(d)+'</span>'; }
+    }).catch(function(e){ if(out) out.innerHTML='<span class="err">request failed: '+escHtml(String(e))+'</span>'; });
+  }
   (function(){ var fab=document.getElementById('cop-fab'), x=document.getElementById('cop-close'),
       gear=document.getElementById('cop-gear'), send=document.getElementById('cop-send'),
       sug=document.getElementById('cop-suggest'), i=document.getElementById('cop-input'),
@@ -664,6 +679,8 @@
     if(u) u.addEventListener('change', copSaveCfg);
     if(m) m.addEventListener('change', copSaveCfg);
     var test=document.getElementById('cop-test'); if(test) test.onclick=copTest;
+    var ksave=document.getElementById('cop-key-save'); if(ksave) ksave.onclick=copSaveKey;
+    var kin=document.getElementById('cop-key'); if(kin) kin.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); copSaveKey(); } });
     if(send) send.onclick=function(){ askCopilot(); };
     if(sug) sug.onclick=function(){ askCopilot(''); };
     if(i) i.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); askCopilot(); } }); })();
