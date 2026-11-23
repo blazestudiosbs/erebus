@@ -9,6 +9,7 @@ from .options import DataStore, OptionSpec
 
 if TYPE_CHECKING:
     from .framework import Framework
+    from .sessions import Session
 
 
 class ModuleType(str, Enum):
@@ -130,7 +131,26 @@ class Auxiliary(Module):
 
 
 class Post(Module):
+    """Post-exploitation base: operates over an already-open :class:`Session`.
+
+    Post modules act on a box the operator already controls (via a handler),
+    so they take a ``SESSION`` id rather than a scanned target and are not
+    scope-gated. They should stay read-only / advisory unless the operator
+    explicitly drives an action.
+    """
+
     type = ModuleType.POST
+
+    def get_session(self) -> Session | None:
+        """Resolve the ``SESSION`` option to a live session, or log + return None."""
+        sid = int(str(self.opt("SESSION", 0) or 0))
+        sess = self.framework.sessions.get(sid)
+        if sess is None or not sess.alive:
+            self.error(
+                f"no live session {sid} - open one with a handler "
+                "(e.g. handler/reverse_tcp) and set SESSION to its id")
+            return None
+        return sess
 
 
 class Exploit(Module):
