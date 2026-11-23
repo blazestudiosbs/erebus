@@ -41,8 +41,20 @@ def _fake(stdout: str = "", rc: int = 0, sink: list | None = None):
     return run_tool
 
 
+def _fake_stream(stdout: str = "", rc: int = 0, sink: list | None = None):
+    def run_tool_stream(argv, on_line, timeout=600.0, input_text=None):
+        if sink is not None:
+            sink.append(argv)
+        for line in stdout.splitlines():
+            if line.strip():
+                on_line(line)
+        return tools.ToolResult(rc, stdout, "")
+    return run_tool_stream
+
+
 def _run(monkeypatch, key, opts, stdout="", allow="127.0.0.1", sink=None):
     monkeypatch.setattr(tools, "run_tool", _fake(stdout=stdout, sink=sink))
+    monkeypatch.setattr(tools, "run_tool_stream", _fake_stream(stdout=stdout, sink=sink))
     fw = Framework()
     if allow:
         fw.scope.allow(allow)
@@ -108,3 +120,34 @@ def test_searchsploit_executes_and_records(monkeypatch):
     argv = sink[0]
     assert argv[:2] == ["searchsploit", "--json"]
     assert "apache" in argv and "2.4.49" in argv
+
+
+def test_run_tool_stream_streams_each_line():
+    import sys
+
+    from erebus.lib.tools import run_tool_stream
+    got: list[str] = []
+    res = run_tool_stream([sys.executable, "-c", "for i in range(3): print('L%d' % i)"],
+                          got.append)
+    assert got == ["L0", "L1", "L2"]            # delivered line by line
+    assert res.rc == 0 and res.stdout == "L0\nL1\nL2"
+
+
+def test_run_tool_stream_missing_binary_raises():
+    import pytest
+
+    from erebus.lib.tools import ToolNotFound, run_tool_stream
+    with pytest.raises(ToolNotFound):
+        run_tool_stream(["erebus-no-such-binary-zzz"], lambda s: None)
+
+
+def test_run_tool_stream_timeout_kills():
+    import subprocess
+    import sys
+
+    import pytest
+
+    from erebus.lib.tools import run_tool_stream
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_tool_stream([sys.executable, "-c", "import time; time.sleep(5)"],
+                        lambda s: None, timeout=0.4)

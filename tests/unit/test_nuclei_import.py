@@ -88,3 +88,32 @@ def test_nuclei_import_bad_file_logs_error_and_stores_nothing(tmp_path):
     fw.run(m, background=False)
     assert errors
     assert fw.store.findings() == []
+
+
+def test_nuclei_module_streams_findings_live(monkeypatch):
+    import json
+
+    from erebus.core.framework import Framework
+    from erebus.lib import tools
+    from erebus.modules.auxiliary.scanner.nuclei import NucleiScan
+    fw = Framework()
+    m = NucleiScan(fw)
+    m.set_option("RHOST", "example.com")
+    line1 = json.dumps({"host": "example.com", "info": {"name": "XSS", "severity": "high"},
+                        "matched-at": "http://example.com/x", "template-id": "xss"})
+    line2 = json.dumps({"host": "example.com", "info": {"name": "Redirect", "severity": "medium"},
+                        "template-id": "redir"})
+    seen: list[int] = []
+
+    def fake_stream(argv, on_line, timeout=600.0, input_text=None):
+        on_line(line1)
+        seen.append(len(list(fw.store.findings())))   # first finding persisted mid-stream?
+        on_line(line2)
+        return tools.ToolResult(0, line1 + "\n" + line2, "")
+
+    monkeypatch.setattr(tools, "run_tool_stream", fake_stream)
+    m.run()
+    findings = [dict(r) for r in fw.store.findings()]
+    assert len(findings) == 2
+    assert seen and seen[0] == 1                      # streamed, not batched at the end
+    assert {f["title"] for f in findings} == {"XSS", "Redirect"}
