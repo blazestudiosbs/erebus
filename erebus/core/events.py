@@ -20,6 +20,8 @@ SESSION_OPEN = "session.open"
 SESSION_CLOSE = "session.close"
 EVIDENCE_ADDED = "evidence.added"
 CRED_FOUND = "cred.found"
+PIVOT_OPEN = "pivot.open"
+PIVOT_CLOSE = "pivot.close"
 LOG = "log"
 
 

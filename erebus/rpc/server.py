@@ -42,6 +42,7 @@ except ModuleNotFoundError:  # fastapi is an optional extra
 from erebus.connectors.base import ConnectorError, MissingKey, NetworkDisabled
 from erebus.connectors.vault import VaultError
 from erebus.core.options import OptionError
+from erebus.core.pivot import session_socat_relay
 from erebus.core.scope import ScopeError
 
 from .events import EventBridge
@@ -218,6 +219,45 @@ def create_app(framework: Any, token: str | None = None,
     async def list_jobs() -> dict[str, Any]:
         """Persisted job history (newest first): module, target, status, timing."""
         return {"jobs": [dict(r) for r in framework.store.jobs()]}
+
+    @app.get("/pivots")
+    async def list_pivots() -> dict[str, Any]:
+        """Active port-forwards (local listener -> downstream via direct/session)."""
+        return {"pivots": [f.as_dict() for f in framework.pivots.list()]}
+
+    @app.post("/pivots", dependencies=[Depends(require_token)])
+    async def open_pivot(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        rhost = str(payload.get("rhost", "")).strip()
+        if not rhost:
+            raise HTTPException(status_code=400, detail="missing 'rhost'")
+        try:
+            rport = int(payload.get("rport", 0))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="'rport' must be an int") from None
+        if not (0 < rport < 65536):
+            raise HTTPException(status_code=400, detail="'rport' out of range")
+        lport = int(payload.get("lport", 0) or 0)
+        sid = payload.get("session")
+        relay = None
+        via = "direct"
+        if sid is not None:
+            sess = framework.sessions.get(int(sid))
+            if sess is None or not sess.alive:
+                raise HTTPException(status_code=400, detail=f"no live session {sid}")
+            relay_port = int(payload.get("relay_port", rport) or rport)
+            relay = session_socat_relay(sess, rhost, rport, relay_port)
+            via = f"session:{sid}"
+        try:
+            fwd = framework.pivots.open(rhost, rport, lport=lport, relay=relay, via=via)
+        except ScopeError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from None
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not bind: {exc}") from None
+        return {"ok": True, "pivot": fwd.as_dict()}
+
+    @app.delete("/pivots/{fid}", dependencies=[Depends(require_token)])
+    async def close_pivot(fid: int) -> dict[str, Any]:
+        return {"ok": framework.pivots.close(fid)}
 
     @app.get("/credentials")
     async def list_credentials() -> dict[str, Any]:
