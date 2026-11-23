@@ -9,6 +9,7 @@ escalates; :mod:`erebus.modules.post.privesc_check` analyses vectors separately.
 from __future__ import annotations
 
 from erebus.core.module_base import OptionSpec, Post, Rank
+from erebus.modules.post._common import parse_neighbours
 
 # label -> (command, per-command overall timeout seconds)
 _PROBES: list[tuple[str, str, float]] = [
@@ -51,6 +52,7 @@ class LinuxEnum(Post):
         root = False
         suid_count = 0
         sudo_rights = ""
+        neigh_out = ""
         for label, cmd, overall in _PROBES:
             try:
                 out = sess.command(cmd, overall=overall).strip()
@@ -64,6 +66,8 @@ class LinuxEnum(Post):
                 suid_count = len([ln for ln in out.splitlines() if ln.strip()])
             if label == "sudo" and out:
                 sudo_rights = out
+            if label in ("neighbours", "network") and out:
+                neigh_out += "\n" + out
             first = out.splitlines()[0] if out.splitlines() else "(no output)"
             self.good(f"{label}: {first[:120]}")
 
@@ -78,6 +82,12 @@ class LinuxEnum(Post):
         if sudo_rights and "may run" in sudo_rights.lower():
             self.add_finding(host, "Current user has sudo rights",
                              severity="low", evidence_ref=f"session:{sess.id}")
+
+        neigh = parse_neighbours(neigh_out, exclude={host})
+        for ip in neigh[:50]:
+            self.add_target(ip, "neighbor")
+        if neigh:
+            self.good(f"{len(neigh)} neighbour host(s) discovered (lateral candidates)")
 
         blob = "\n".join(report).encode()
         ref = self.add_evidence(host, blob, kind="text", name=f"linux_enum_{sess.id}.txt",

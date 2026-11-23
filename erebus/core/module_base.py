@@ -103,6 +103,15 @@ class Module:
         self.framework.store.add_finding(host, self.name, title, **kw)  # type: ignore[arg-type]
         self.emit(ev.FINDING_NEW, host=host, title=title, **kw)
 
+    def add_credential(self, host: str, username: str, secret: str = "",
+                       kind: str = "password", service: str = "", port: int = 0) -> None:
+        """Record a discovered credential. The secret is stored but never emitted."""
+        self.framework.store.add_credential(
+            host, username, secret=secret, kind=kind, service=service,
+            port=port, source=self.name)
+        self.emit(ev.CRED_FOUND, host=host, username=username, kind=kind,
+                  service=service, port=port)  # note: no secret in the event
+
     def add_evidence(self, host: str, data: bytes, kind: str = "file", name: str = "",
                      note: str = "") -> str:
         """Store ``data`` as evidence and return its ``sha256:`` reference.

@@ -9,6 +9,7 @@ network/neighbour info. It changes nothing; privesc vectors are judged by
 from __future__ import annotations
 
 from erebus.core.module_base import OptionSpec, Post, Rank
+from erebus.modules.post._common import parse_neighbours
 
 _PROBES: list[tuple[str, str, float]] = [
     ("identity", "id; whoami", 5.0),
@@ -54,6 +55,7 @@ class MacosEnum(Post):
         root = False
         suid_count = 0
         in_admin = False
+        neigh_out = ""
         for label, cmd, overall in _PROBES:
             try:
                 out = sess.command(cmd, overall=overall).strip()
@@ -67,6 +69,8 @@ class MacosEnum(Post):
                 suid_count = len([ln for ln in out.splitlines() if ln.strip()])
             if label == "admin" and ("admin" in out):
                 in_admin = True
+            if label in ("neighbours", "network") and out:
+                neigh_out += "\n" + out
             first = out.splitlines()[0] if out.splitlines() else "(no output)"
             self.good(f"{label}: {first[:120]}")
 
@@ -80,6 +84,12 @@ class MacosEnum(Post):
         if suid_count:
             self.add_finding(host, f"{suid_count} SUID binaries present",
                              severity="info", evidence_ref=f"session:{sess.id}")
+
+        neigh = parse_neighbours(neigh_out, exclude={host})
+        for ip in neigh[:50]:
+            self.add_target(ip, "neighbor")
+        if neigh:
+            self.good(f"{len(neigh)} neighbour host(s) discovered (lateral candidates)")
 
         blob = "\n".join(report).encode()
         ref = self.add_evidence(host, blob, kind="text", name=f"macos_enum_{sess.id}.txt",

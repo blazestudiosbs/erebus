@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS jobs(
   id INTEGER PRIMARY KEY, module TEXT, key TEXT, target TEXT, options TEXT,
   status TEXT, error TEXT, started REAL, ended REAL);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE TABLE IF NOT EXISTS credentials(
+  id INTEGER PRIMARY KEY, host TEXT, port INTEGER, service TEXT,
+  username TEXT, secret TEXT, kind TEXT, source TEXT, ts REAL,
+  UNIQUE(host, port, username, secret));
 """
 
 
@@ -190,3 +194,22 @@ class Store:
             )
             self.db.commit()
             return int(cur.rowcount or 0)
+
+    # -- credentials --------------------------------------------------------
+    def add_credential(self, host: str, username: str, secret: str = "",
+                       kind: str = "password", service: str = "", port: int = 0,
+                       source: str = "") -> int:
+        """Record a discovered credential (deduped on host/port/user/secret)."""
+        with self._lock:
+            cur = self.db.execute(
+                "INSERT OR IGNORE INTO credentials"
+                "(host,port,service,username,secret,kind,source,ts) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (host, int(port or 0), service, username, secret, kind, source,
+                 time.time()),
+            )
+            self.db.commit()
+            return int(cur.lastrowid or 0)
+
+    def credentials(self) -> list[sqlite3.Row]:
+        return self.db.execute("SELECT * FROM credentials ORDER BY id").fetchall()

@@ -9,6 +9,7 @@ lateral movement. It changes nothing; privesc vectors are judged separately by
 from __future__ import annotations
 
 from erebus.core.module_base import OptionSpec, Post, Rank
+from erebus.modules.post._common import parse_neighbours
 
 # label -> (command, per-command overall timeout seconds)
 _PROBES: list[tuple[str, str, float]] = [
@@ -54,6 +55,7 @@ class WindowsEnum(Post):
         report: list[str] = [f"# windows_enum - session {sess.id} @ {host}", ""]
         is_system = False
         is_admin = False
+        neigh_out = ""
         for label, cmd, overall in _PROBES:
             try:
                 out = sess.command(cmd, overall=overall).strip()
@@ -66,6 +68,8 @@ class WindowsEnum(Post):
                 is_system = True
             if label == "groups" and "s-1-5-32-544" in low:
                 is_admin = True
+            if label in ("neighbours", "network") and out:
+                neigh_out += "\n" + out
             first = out.splitlines()[0] if out.splitlines() else "(no output)"
             self.good(f"{label}: {first[:120]}")
 
@@ -73,6 +77,12 @@ class WindowsEnum(Post):
         who = "SYSTEM" if is_system else ("local admin" if is_admin else "standard user")
         self.add_finding(host, f"Session {sess.id}: running as {who}",
                          severity="info", evidence_ref=f"session:{sess.id}")
+
+        neigh = parse_neighbours(neigh_out, exclude={host})
+        for ip in neigh[:50]:
+            self.add_target(ip, "neighbor")
+        if neigh:
+            self.good(f"{len(neigh)} neighbour host(s) discovered (lateral candidates)")
 
         blob = "\n".join(report).encode()
         ref = self.add_evidence(host, blob, kind="text", name=f"windows_enum_{sess.id}.txt",
