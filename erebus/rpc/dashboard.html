@@ -636,9 +636,11 @@
     apiPost('copilot', body).then(function(res){
       if(res.ok){ var lbl=res.j.provider+((cfg.provider==='ollama'&&cfg.model)?(' \u00b7 '+cfg.model):'');
         copTx[at]={role:'bot', text:res.j.answer||'(no answer)', provider:lbl}; }
-      else { var d=(res.j&&res.j.detail)||('HTTP '+res.status);
-        var hint=(res.status===503)?'  Add a key, or switch to Ollama with the gear.':
-          ((res.status===502&&cfg.provider==='ollama')?('  Could not reach '+cfg.url+' - is Ollama running and reachable from the server?'):'');
+      else { var d=(res.j&&res.j.detail)||('HTTP '+res.status); var hint='';
+        if(res.status===503){ hint='  Add a key, or switch provider with the gear.'; }
+        else if(cfg.provider==='ollama'){
+          if(/not found|returned HTTP|no such model/i.test(d)){ hint='  The server answered but rejected it - check the Model name (hit Test connection to list what it has).'; }
+          else { hint='  Could not reach '+cfg.url+' - is Ollama running and reachable from the server?'; } }
         copTx[at]={role:'err', text:d+hint}; }
       copRender();
     }).catch(function(e){ copTx[at]={role:'err', text:'request failed: '+e}; copRender(); });
