@@ -31,3 +31,16 @@ def test_build_context_summarizes_store():
     fw.store.add_target("1.2.3.4")
     ctx = build_context(fw.store)
     assert "Hosts (1)" in ctx and "1.2.3.4" in ctx
+
+
+def test_copilot_context_includes_real_module_keys():
+    """The copilot is grounded in the real module catalog, not invented names."""
+    fw = Framework()
+    fw.store.add_target("10.0.0.5", status="scanned")
+    fake = _Fake()
+    Copilot(fw, fake).ask("which scanner should I run?")
+    assert "Available Erebus modules" in fake.prompt
+    keys = [k for k, _ in fw.loader.all()]
+    assert keys, "loader should expose modules"
+    assert any(k in fake.prompt for k in keys)   # at least one real key reaches the LLM
+    assert "exact module keys" in fake.system or "exact key" in fake.system

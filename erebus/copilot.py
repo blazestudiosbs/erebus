@@ -14,9 +14,14 @@ _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 SYSTEM_PROMPT = (
     "You are Erebus, an assistant for an operator's own authorized security-research "
     "lab. Answer concisely and technically, grounded in the engagement data provided. "
-    "Only reason about the operator's own authorized lab targets. You may suggest next "
-    "steps or Erebus modules to run, but you never run anything yourself and never claim "
-    "to have — the operator executes every action."
+    "Only reason about the operator's own authorized lab targets. You never run anything "
+    "yourself and never claim to have - the operator executes every action.\n\n"
+    "When you recommend an Erebus module, you MUST use one of the exact module keys "
+    "listed under 'Available Erebus modules' in the context (for example "
+    "'auxiliary/scanner/nuclei'). Never invent module names or describe a generic "
+    "scanner that is not in that list - if no listed module fits, say so plainly and "
+    "suggest a console command or manual step instead. Refer to each module by its "
+    "exact key so the operator can run it with 'use <key>'."
 )
 
 
@@ -24,8 +29,31 @@ class _Completer(Protocol):
     def complete(self, prompt: str, system: str | None = ..., max_tokens: int = ...) -> str: ...
 
 
-def build_context(store: Any, max_items: int = 40) -> str:
-    """Summarize the datastore (hosts/services/findings) as prompt context."""
+def build_modules_catalog(loader: Any, max_items: int = 80) -> str:
+    """List the real Erebus modules (key + short description) for grounding."""
+    try:
+        items = list(loader.all())
+    except Exception:  # pragma: no cover - defensive; a bad loader must not break Q&A
+        return ""
+    items.sort(key=lambda kv: str(kv[0]))
+    lines = [f"Available Erebus modules ({len(items)}) - use these exact keys:"]
+    for key, cls in items[:max_items]:
+        desc = str(getattr(cls, "description", "") or "").strip().splitlines()
+        first = desc[0] if desc else ""
+        if len(first) > 90:
+            first = first[:87] + "..."
+        lines.append(f"  - {key}" + (f"  {first}" if first else ""))
+    if len(items) > max_items:
+        lines.append(f"  ... and {len(items) - max_items} more")
+    return "\n".join(lines)
+
+
+def build_context(store: Any, max_items: int = 40, loader: Any = None) -> str:
+    """Summarize the datastore (hosts/services/findings) as prompt context.
+
+    When *loader* is given, the real module catalog is appended so the LLM
+    recommends modules that actually exist instead of inventing names.
+    """
     hosts = [dict(r) for r in store.hosts()]
     services = [dict(r) for r in store.services()]
     findings = [dict(r) for r in store.findings()]
@@ -52,6 +80,11 @@ def build_context(store: Any, max_items: int = 40) -> str:
         if f.get("attack"):
             bits.append(str(f["attack"]))
         lines.append(f"  - {f['host']} {f.get('title') or ''} ({', '.join(bits)})".rstrip())
+    if loader is not None:
+        cat = build_modules_catalog(loader)
+        if cat:
+            lines.append("")
+            lines.append(cat)
     return "\n".join(lines)
 
 
@@ -63,6 +96,7 @@ class Copilot:
         self.connector = connector
 
     def ask(self, question: str, max_tokens: int = 512) -> str:
-        context = build_context(self.framework.store)
+        context = build_context(self.framework.store,
+                                loader=getattr(self.framework, "loader", None))
         prompt = f"Engagement state:\n{context}\n\nQuestion: {question}"
         return self.connector.complete(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens)
