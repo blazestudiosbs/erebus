@@ -314,6 +314,41 @@ def create_app(framework: Any, token: str | None = None,
             raise HTTPException(status_code=502, detail=str(exc)) from None
         return {"answer": answer, "provider": provider}
 
+    @app.post("/copilot/ollama/test", dependencies=[Depends(require_token)])
+    def ollama_test(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        from erebus.connectors.base import Connector
+        base = str(payload.get("base_url", "")).strip().rstrip("/") or "http://command-center:3000"
+        conn = Connector(framework.vault, allow_insecure=True,
+                         offline=bool(framework.config.get("offline")),
+                         tor=bool(framework.config.get("tor")))
+        conn.base_url = base
+
+        def _openai(data: Any) -> list | None:
+            if isinstance(data, dict) and isinstance(data.get("data"), list):
+                return [str(m.get("id")) for m in data["data"]
+                        if isinstance(m, dict) and m.get("id")]
+            return None
+
+        def _tags(data: Any) -> list | None:
+            if isinstance(data, dict) and isinstance(data.get("models"), list):
+                return [str(m.get("name")) for m in data["models"]
+                        if isinstance(m, dict) and m.get("name")]
+            return None
+
+        last = ""
+        for path, extract in (("/v1/models", _openai), ("/api/tags", _tags)):
+            try:
+                models = extract(conn.get_json(path))
+            except NetworkDisabled as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from None
+            except ConnectorError as exc:
+                last = str(exc)
+                continue
+            if models is not None:
+                return {"ok": True, "url": base + path, "models": models}
+        raise HTTPException(status_code=502,
+                            detail=last or f"{base}: no models endpoint responded")
+
     @app.post("/console", dependencies=[Depends(require_token)])
     def console_cmd(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006  (sync: runs in threadpool)
         import contextlib
