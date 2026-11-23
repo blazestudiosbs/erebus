@@ -149,6 +149,20 @@
   .cop-foot button{ background:#1a1030; color:var(--accent); border:1px solid #3a2d55; border-radius:9px; padding:0 13px; font-size:12.5px; cursor:pointer; white-space:nowrap; }
   .cop-foot button.sec{ color:#9a92b8; }
   .cop-foot button:hover{ background:#241640; }
+  .feedbtns{ position:absolute; top:6px; right:9px; z-index:3; display:flex; gap:5px; }
+  .feedbtns button{ background:rgba(26,16,48,0.85); color:#9a92b8; border:1px solid #2a2340; border-radius:6px; padding:2px 8px; font-size:10.5px; cursor:pointer; font-family:ui-monospace,monospace; }
+  .feedbtns button:hover{ color:var(--accent); border-color:var(--accent); }
+  .notes-modes{ display:flex; gap:6px; margin-bottom:8px; }
+  .notes-modes button{ background:transparent; color:#6e6a85; border:1px solid #2a2340; border-radius:8px; padding:5px 14px; font-size:12.5px; cursor:pointer; }
+  .notes-modes button.on{ background:#1a1030; color:var(--accent); border-color:#3a2d55; }
+  .notes-pv{ flex:1; min-height:340px; overflow:auto; background:rgba(10,8,18,0.7); border:1px solid #2a2340; border-radius:10px; padding:14px 18px; font-family:ui-monospace,monospace; font-size:13px; line-height:1.65; color:#cfc6ef; }
+  .notes-pv .nsum{ background:rgba(26,16,48,0.6); border:1px solid #2a2340; border-radius:8px; padding:9px 13px; margin-bottom:14px; font-size:12px; color:#9a92b8; }
+  .notes-pv .nh{ color:#e6e1ff; font-weight:600; margin:14px 0 6px; }
+  .notes-pv .nh1{ font-size:17px; } .notes-pv .nh2{ font-size:15px; } .notes-pv .nh3{ font-size:13.5px; color:#cfc6ef; }
+  .notes-pv .nck{ margin:2px 0; } .notes-pv .nck.done{ color:#6e6a85; text-decoration:line-through; }
+  .notes-pv .nl{ margin:2px 0; } .notes-pv .nblank{ height:8px; }
+  .hl-cve{ color:#c9a3ff; } .hl-kev{ color:#ff6a6a; font-weight:700; } .hl-host{ color:#7be8ff; }
+  .hl-critical{ color:#ff3df5; font-weight:600; } .hl-high{ color:#ff6a6a; } .hl-medium{ color:#ff9d2e; } .hl-low{ color:#22e0ff; } .hl-info{ color:#8a93a3; }
 </style>
 </head>
 <body>
@@ -237,7 +251,9 @@
       <div class="notes-wrap">
         <h2>Notes</h2>
         <p class="psub">A living engagement notepad - findings, next steps, loose ends. Saved to disk and persists across restarts.</p>
+        <div class="notes-modes"><button id="nm-edit" class="on">Edit</button><button id="nm-prev">Preview</button></div>
         <textarea class="notes-ta" id="notes-ta" spellcheck="false" placeholder="# caporia.co - engagement notes&#10;&#10;- [ ] nuclei: review criticals&#10;- [ ] confirm open ports from the scan&#10;- next: ..."></textarea>
+        <div class="notes-pv" id="notes-pv" style="display:none"></div>
         <div class="notes-bar"><span class="dot" id="notes-dot"></span><span id="notes-status">loading...</span><span style="margin-left:auto" id="notes-path"></span></div>
       </div>
     </div>
@@ -268,6 +284,7 @@
     </div>
     <div class="stream">
       <h4>data stream</h4>
+      <div class="feedbtns"><button id="feed-copy" title="copy feed to clipboard">copy</button><button id="feed-note" title="append feed to Notes">&rarr; notes</button></div>
       <div class="track mono" id="track"></div>
     </div>
   </aside>
@@ -457,6 +474,7 @@
     fetch('notes',{headers:{'Authorization':'Bearer '+window.EREBUS_TOKEN},cache:'no-store'})
       .then(function(r){return r.json();}).then(function(j){ var ta=document.getElementById('notes-ta');
         if(ta && !notesLoaded){ ta.value=j.text||''; } notesLoaded=true;
+        if(window.__notesMode==='preview') renderNotesPreview();
         var pe=document.getElementById('notes-path'); if(pe) pe.textContent=j.path||'';
         notesStatus('saved','saved'); }).catch(function(){ notesStatus('load failed','err'); }); }
   function saveNotes(){ if(!hasTok()){ notesStatus('not connected','err'); return; }
@@ -464,6 +482,52 @@
     apiPost('notes',{text:ta.value}).then(function(res){ notesStatus(res.ok?'saved':'save failed', res.ok?'saved':'err'); }); }
   (function(){ var ta=document.getElementById('notes-ta'); if(!ta) return;
     ta.addEventListener('input',function(){ notesStatus('unsaved...','dirty'); clearTimeout(notesTimer); notesTimer=setTimeout(saveNotes, 900); }); })();
+
+  // ---- notes preview: recognize + categorize + colour-code -----------------
+  function hlt(line){ var s=escHtml(line);
+    s=s.replace(/\bCVE-\d{4}-\d{4,}\b/gi,'<span class="hl-cve">$&</span>');
+    s=s.replace(/\bKEV\b/g,'<span class="hl-kev">KEV</span>');
+    s=s.replace(/\bcritical\b/gi,'<span class="hl-critical">$&</span>')
+       .replace(/\bhigh\b/gi,'<span class="hl-high">$&</span>')
+       .replace(/\bmedium\b/gi,'<span class="hl-medium">$&</span>')
+       .replace(/\blow\b/gi,'<span class="hl-low">$&</span>');
+    s=s.replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,'<span class="hl-host">$&</span>');
+    return s;
+  }
+  function renderNotesLine(line){ var t=line.replace(/\s+$/,'');
+    var hm=t.match(/^(#{1,3})\s+(.*)$/); if(hm){ return '<div class="nh nh'+hm[1].length+'">'+hlt(hm[2])+'</div>'; }
+    var cm=t.match(/^(\s*[-*]\s+)\[([ xX])\]\s+(.*)$/); if(cm){ var done=cm[2].toLowerCase()==='x';
+      return '<div class="nck'+(done?' done':'')+'">'+(done?'\u2611':'\u2610')+' '+hlt(cm[3])+'</div>'; }
+    if(!t.trim()) return '<div class="nblank"></div>';
+    return '<div class="nl">'+hlt(t)+'</div>';
+  }
+  function notesSummary(text){ var sev={critical:0,high:0,medium:0,low:0}, m, re=/\b(critical|high|medium|low)\b/gi;
+    while((m=re.exec(text))){ sev[m[1].toLowerCase()]++; }
+    var cves={}; (text.match(/\bCVE-\d{4}-\d{4,}\b/gi)||[]).forEach(function(c){cves[c.toUpperCase()]=1;});
+    var ips={}; (text.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g)||[]).forEach(function(i){ips[i]=1;});
+    var parts=[]; ['critical','high','medium','low'].forEach(function(k){ if(sev[k]) parts.push('<span class="hl-'+k+'">'+sev[k]+' '+k+'</span>'); });
+    var nc=Object.keys(cves).length, nh=Object.keys(ips).length, bits=[];
+    if(parts.length) bits.push('findings &mdash; '+parts.join(', '));
+    if(nc) bits.push('<span class="hl-cve">'+nc+' CVE'+(nc>1?'s':'')+'</span>');
+    if(nh) bits.push('<span class="hl-host">'+nh+' host'+(nh>1?'s':'')+'</span>');
+    return bits.length ? '<div class="nsum">'+bits.join('   &middot;   ')+'</div>' : '';
+  }
+  function renderNotesPreview(){ var ta=document.getElementById('notes-ta'), pv=document.getElementById('notes-pv'); if(!ta||!pv) return;
+    var text=ta.value||'';
+    if(!text.trim()){ pv.innerHTML='<div class="empty">nothing yet \u2014 write notes, or send the live feed here with \u2192 notes</div>'; return; }
+    pv.innerHTML=notesSummary(text)+text.split('\n').map(renderNotesLine).join('');
+  }
+  function notesMode(mode){ var ta=document.getElementById('notes-ta'), pv=document.getElementById('notes-pv'),
+      be=document.getElementById('nm-edit'), bp=document.getElementById('nm-prev'); var prev=(mode==='preview');
+    window.__notesMode=mode;
+    if(ta) ta.style.display=prev?'none':'block';
+    if(pv) pv.style.display=prev?'block':'none';
+    if(be) be.classList.toggle('on',!prev); if(bp) bp.classList.toggle('on',prev);
+    if(prev) renderNotesPreview();
+  }
+  (function(){ var be=document.getElementById('nm-edit'), bp=document.getElementById('nm-prev');
+    if(be) be.onclick=function(){ notesMode('edit'); };
+    if(bp) bp.onclick=function(){ notesMode('preview'); }; })();
 
   // ---- Research tab ----------------------------------------------------
   function loadResearch(){ fetch('research',{cache:'no-store'}).then(function(r){return r.json();}).then(renderResearch)
@@ -599,14 +663,27 @@
     var detail=d.cve||d.title||d.host||d.module||'';
     return {c:m[0], text:m[1]+(detail?('  '+detail):'')};
   }
-  var streamLog=[], streamLive=false;
+  var streamLog=[], streamText=[], streamLive=false;
   function streamPush(ev){ var track=document.getElementById('track'); if(!track) return;
-    if(!streamLive){ streamLog=[]; streamLive=true; }
-    var ln=streamLine(ev);
-    streamLog.push('<div style="color:'+ln.c+'"><span style="color:#4d4a60">'+_ts()+'</span>  '+escHtml(ln.text)+'</div>');
-    streamLog=streamLog.slice(-80);
+    if(!streamLive){ streamLog=[]; streamText=[]; streamLive=true; }
+    var ln=streamLine(ev), t=_ts();
+    streamLog.push('<div style="color:'+ln.c+'"><span style="color:#4d4a60">'+t+'</span>  '+escHtml(ln.text)+'</div>');
+    streamText.push(t+'  '+ln.text);
+    streamLog=streamLog.slice(-80); streamText=streamText.slice(-200);
     track.innerHTML=streamLog.join(''); track.scrollTop=track.scrollHeight;
   }
+  function feedText(){ return streamText.length ? streamText.join('\n') : ''; }
+  (function(){ var cp=document.getElementById('feed-copy'), nb=document.getElementById('feed-note');
+    if(cp) cp.onclick=function(){ var txt=feedText(); if(!txt){ cp.textContent='empty'; setTimeout(function(){cp.textContent='copy';},900); return; }
+      (navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(txt):Promise.reject())
+        .then(function(){ cp.textContent='copied'; },function(){ cp.textContent='select+copy'; })
+        .then(function(){ setTimeout(function(){cp.textContent='copy';},1100); }); };
+    if(nb) nb.onclick=function(){ if(!hasTok()){ nb.textContent='offline'; setTimeout(function(){nb.textContent='\u2192 notes';},1100); return; }
+      var txt=feedText(); if(!txt) return;
+      fetch('notes',{headers:{'Authorization':'Bearer '+window.EREBUS_TOKEN},cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
+        var cur=j.text||''; var block='\n\n## feed '+_ts()+'\n'+txt+'\n';
+        return apiPost('notes',{text:cur+block}); }).then(function(){ nb.textContent='saved'; notesLoaded=false;
+        setTimeout(function(){nb.textContent='\u2192 notes';},1100); }); }; })();
   function refillStream(){ if(streamLive) return; var track=document.getElementById('track'); if(!track) return;
     track.innerHTML='<div style="color:#4d4a60">waiting for live activity\u2026</div>'
       +'<div style="color:#4d4a60">run a scan from the Targets tab to see events stream here</div>';

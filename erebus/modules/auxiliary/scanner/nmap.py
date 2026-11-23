@@ -6,6 +6,7 @@ passes the framework scope gate: RHOSTS is checked before nmap is launched.
 """
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
 import xml.etree.ElementTree as ET
@@ -43,9 +44,24 @@ class NmapScan(Auxiliary):
         argv += shlex.split(str(self.opt("ARGS")))
         argv.append(rhosts)
 
-        self.info_("running: " + " ".join(argv))
+        self.info_("running (live): " + " ".join(argv))
+        seen = {"host": ""}
+
+        def on_line(line: str) -> None:
+            # nmap streams XML as hosts/ports resolve; surface them live
+            m = re.search(r'<address addr="([^"]+)" addrtype="ipv4"', line)
+            if m:
+                seen["host"] = m.group(1)
+                self.info_(f"scanning {m.group(1)}")
+                return
+            if "<port " in line and 'state="open"' in line:
+                pm = re.search(r'portid="(\d+)"', line)
+                host = seen["host"]
+                self.good((f"{host}:" if host else "") + (pm.group(1) if pm else "?") + " open")
+
         try:
-            result = tools.run_tool(argv, timeout=float(str(self.opt("TIMEOUT", 600))))
+            result = tools.run_tool_stream(argv, on_line,
+                                           timeout=float(str(self.opt("TIMEOUT", 600))))
         except tools.ToolNotFound:
             self.error("nmap not found on PATH (set NMAPBIN or install nmap)")
             return
@@ -62,7 +78,6 @@ class NmapScan(Auxiliary):
 
         hosts = parse_nmap_xml(root)
         total = len(hosts)
-        self.info_(f"nmap found {total} up host(s)")
         services = 0
         for done, host in enumerate(hosts, 1):
             self.add_target(host.addr, "scanned")
@@ -70,8 +85,5 @@ class NmapScan(Auxiliary):
                 services += 1
                 self.add_service(host.addr, s.port, proto=s.proto, name=s.name,
                                  product=s.product, version=s.version)
-                detail = " ".join(x for x in (s.name, s.product, s.version) if x)
-                line = f"{host.addr}:{s.port}/{s.proto} open"
-                self.good(line + (f"  {detail}" if detail else ""))
             self.emit(ev.MODULE_PROGRESS, done=done, total=total)
         self.good(f"done: {total} host(s), {services} service(s)")
