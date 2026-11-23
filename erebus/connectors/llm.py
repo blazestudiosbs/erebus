@@ -38,10 +38,18 @@ def _anthropic_text(data: dict[str, Any]) -> str:
 def _openai_text(data: dict[str, Any]) -> str:
     choices = data.get("choices") or []
     if not choices or not isinstance(choices[0], dict):
-        raise ConnectorError("llm: empty response from openai")
-    text = str((choices[0].get("message") or {}).get("content") or "").strip()
+        raise ConnectorError("llm: empty response from the model")
+    msg = choices[0].get("message") or {}
+    text = str(msg.get("content") or "").strip()
+    if not text:  # some reasoning models leave content empty and put output in reasoning
+        text = str(msg.get("reasoning") or "").strip()
     if not text:
-        raise ConnectorError("llm: empty response from openai")
+        fr = choices[0].get("finish_reason")
+        if fr == "length":
+            raise ConnectorError(
+                "llm: model hit the token limit before answering (a reasoning model "
+                "needs more tokens, or use a non-reasoning model)")
+        raise ConnectorError("llm: empty response from the model")
     return text
 
 

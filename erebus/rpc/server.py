@@ -305,7 +305,7 @@ def create_app(framework: Any, token: str | None = None,
         base_url = str(payload.get("base_url", "")).strip() or None
         try:
             conn = LLMConnector(framework.vault, provider=provider, model=model,
-                                base_url=base_url,
+                                base_url=base_url, timeout=120.0,
                                 offline=bool(framework.config.get("offline")),
                                 tor=bool(framework.config.get("tor")))
             answer = Copilot(framework, conn).ask(question)
