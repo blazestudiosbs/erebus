@@ -9,8 +9,9 @@ print CSS that forces a light page, so a browser's "Save as PDF" gives a clean P
 Everything taken from the datastore is escaped: findings can originate in imported files.
 
 Direct PDF output is available via ``render_pdf`` (the optional ``fpdf2`` dependency).
-TODO(decision): the heatmap lists techniques by id only. Grouping by tactic needs the MITRE
-ATT&CK dataset, which is not bundled.
+The ATT&CK heatmap groups techniques by tactic via a bundled technique->tactic
+subset (see ``reporting/attack.py``); techniques outside that subset fall under
+"Uncategorized".
 """
 from __future__ import annotations
 
