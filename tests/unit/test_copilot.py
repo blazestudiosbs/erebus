@@ -44,3 +44,35 @@ def test_copilot_context_includes_real_module_keys():
     assert keys, "loader should expose modules"
     assert any(k in fake.prompt for k in keys)   # at least one real key reaches the LLM
     assert "exact module keys" in fake.system or "exact key" in fake.system
+
+
+def test_sessions_context_lists_sessions_and_verbs():
+    from erebus.copilot import build_sessions_context
+    fw = Framework()
+    sid = fw.store.add_session("10.0.0.9", "shell", "tcp")
+
+    class _Live:
+        def __init__(self, i): self.id, self.host, self.alive = i, "10.0.0.9", True
+    fw.sessions._live[sid] = _Live(sid)
+    ctx = build_sessions_context(fw)
+    assert f"#{sid} 10.0.0.9 [live]" in ctx
+    assert "session verbs" in ctx and "whoami" in ctx
+
+
+def test_setup_context_summarizes_doctor():
+    from erebus.copilot import build_setup_context
+    ctx = build_setup_context()
+    assert "Setup (erebus doctor)" in ctx
+
+
+def test_ask_includes_sessions_and_setup():
+    fw = Framework()
+    fw.store.add_target("10.0.0.5", status="scanned")
+    fw.store.add_session("10.0.0.9", "shell", "tcp")
+    fake = _Fake()
+    Copilot(fw, fake).ask("what's on my sessions and am I set up?")
+    assert "Sessions (" in fake.prompt
+    assert "Setup (erebus doctor)" in fake.prompt
+    assert "session verbs" in fake.prompt.lower() or "whoami" in fake.prompt
+    # guardrail: still told not to run things itself
+    assert "never run" in fake.system.lower()

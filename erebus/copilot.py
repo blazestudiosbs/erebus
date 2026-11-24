@@ -21,7 +21,12 @@ SYSTEM_PROMPT = (
     "'auxiliary/scanner/nuclei'). Never invent module names or describe a generic "
     "scanner that is not in that list - if no listed module fits, say so plainly and "
     "suggest a console command or manual step instead. Refer to each module by its "
-    "exact key so the operator can run it with 'use <key>'."
+    "exact key so the operator can run it with 'use <key>'.\n\n"
+    "A 'Setup (erebus doctor)' section may list readiness (missing tools, empty "
+    "intel DB, etc.) - use it to answer setup/readiness questions. A 'Sessions' "
+    "section lists caught shells; when asked about a session, identify it there and "
+    "suggest the exact read-only session verb(s) (from the listed verbs) the "
+    "operator can run - you never run them yourself."
 )
 
 
@@ -88,6 +93,50 @@ def build_context(store: Any, max_items: int = 40, loader: Any = None) -> str:
     return "\n".join(lines)
 
 
+def build_sessions_context(framework: Any, max_items: int = 40) -> str:
+    """Live/known sessions + the read-only verbs the operator can run on them."""
+    try:
+        live = {s.id for s in framework.sessions.live()}
+        rows = [dict(r) for r in framework.store.sessions()]
+    except Exception:  # pragma: no cover - defensive
+        return ""
+    if not rows:
+        return ""
+    lines = [f"Sessions ({len(rows)}):"]
+    for r in rows[:max_items]:
+        if r.get("closed"):
+            state = "closed"
+        elif r.get("id") in live:
+            state = "live"
+        else:
+            state = "stale"
+        lines.append(f"  - #{r.get('id')} {r.get('host')} [{state}] "
+                     f"{r.get('type') or ''}".rstrip())
+    try:
+        from .core.session_verbs import verb_list
+        names = ", ".join(v["name"] for v in verb_list())
+        lines.append(f"Read-only session verbs (suggest by name; operator runs them): {names}")
+    except Exception:  # pragma: no cover
+        pass
+    return "\n".join(lines)
+
+
+def build_setup_context() -> str:
+    """Summarize `erebus doctor` so readiness questions can be answered."""
+    try:
+        from .doctor import collect
+        checks = collect()
+    except Exception:  # pragma: no cover - defensive
+        return ""
+    warn = [c for c in checks if c.status == "warn"]
+    miss = [c for c in checks if c.status == "missing"]
+    ok = len(checks) - len(warn) - len(miss)
+    lines = [f"Setup (erebus doctor): {ok} ok, {len(warn)} warning(s), {len(miss)} missing"]
+    for c in (miss + warn)[:12]:
+        lines.append(f"  - [{c.status}] {c.name}: {c.detail}".rstrip())
+    return "\n".join(lines)
+
+
 class Copilot:
     """Answer a question about the current engagement via an LLM connector."""
 
@@ -96,7 +145,14 @@ class Copilot:
         self.connector = connector
 
     def ask(self, question: str, max_tokens: int = 512) -> str:
-        context = build_context(self.framework.store,
-                                loader=getattr(self.framework, "loader", None))
+        parts = [build_context(self.framework.store,
+                               loader=getattr(self.framework, "loader", None))]
+        sess = build_sessions_context(self.framework)
+        if sess:
+            parts.append(sess)
+        setup = build_setup_context()
+        if setup:
+            parts.append(setup)
+        context = "\n\n".join(parts)
         prompt = f"Engagement state:\n{context}\n\nQuestion: {question}"
         return self.connector.complete(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens)
