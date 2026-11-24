@@ -394,6 +394,18 @@ def create_app(framework: Any, token: str | None = None,
         return {"target": target, "kind": detect_target_type(target),
                 "total": len(tools), "tools": [_osint_tool_dict(t) for t in tools[:300]]}
 
+    @app.get("/dns", dependencies=[Depends(require_token)])
+    def dns_report(request: Request) -> dict[str, Any]:
+        """Passive dnsdumpster-style DNS report for a domain: NS/MX/TXT/host records,
+        each host enriched with IP, reverse DNS and ASN/provider. Queries a resolver
+        and a public BGP API, never the target. Token-gated (triggers outbound lookups)."""
+        from erebus.dnsview import build_dns_report
+        domain = request.query_params.get("domain", "").strip()
+        if not domain:
+            raise HTTPException(status_code=400, detail="missing 'domain'")
+        offline = bool(framework.config.get("offline"))
+        return build_dns_report(domain, enrich=not offline)
+
     @app.post("/jobs", dependencies=[Depends(require_token)])
     async def start_job(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
         key = str(payload.get("module", "")).strip()

@@ -21,3 +21,12 @@ def resolve_ips(target: str) -> list[str]:
         return ips
     except OSError:
         return []
+
+
+def reverse_dns(ip: str) -> str:
+    """PTR (reverse DNS) for an IP, or '' if none. Queries a resolver, not the host."""
+    try:
+        host, _aliases, _addrs = socket.gethostbyaddr(ip)
+        return str(host or "")
+    except (OSError, UnicodeError):
+        return ""

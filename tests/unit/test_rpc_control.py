@@ -458,3 +458,30 @@ def test_autodetect_requires_candidates():
     with _client(Framework()) as c:
         r = c.post("/copilot/ollama/autodetect", headers=AUTH, json={"candidates": []})
         assert r.status_code == 400
+
+
+# --- DNS report endpoint --------------------------------------------------
+
+def test_dns_requires_token():
+    with _client(Framework()) as c:
+        assert c.get("/dns?domain=example.com").status_code == 401
+
+
+def test_dns_missing_domain_is_400():
+    with _client(Framework()) as c:
+        assert c.get("/dns", headers=AUTH).status_code == 400
+
+
+def test_dns_returns_report(monkeypatch):
+    import erebus.dnsview as dv
+
+    def fake_build(domain, **kw):
+        return {"domain": domain, "sections": [{"key": "ns", "title": "DNS Servers", "rows": []}],
+                "enriched": kw.get("enrich", True)}
+
+    monkeypatch.setattr(dv, "build_dns_report", fake_build)
+    with _client(Framework()) as c:
+        r = c.get("/dns?domain=example.com", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["domain"] == "example.com"
+        assert r.json()["sections"][0]["key"] == "ns"
