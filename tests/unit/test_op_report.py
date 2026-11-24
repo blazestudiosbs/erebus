@@ -168,9 +168,77 @@ def test_cli_report_op_errors_do_not_write(tmp_path, monkeypatch) -> None:
     assert _cli(monkeypatch, "report", "--op", str(arc), "--out", str(out)) == 2
     assert not out.exists()                                   # wrong passphrase
     monkeypatch.setenv("EREBUS_ARCHIVE_PASSPHRASE", "pw")
-    assert _cli(monkeypatch, "report", "--op", str(arc),
-                "--out", str(tmp_path / "o.pdf")) == 2        # pdf unsupported for --op
     assert _cli(monkeypatch, "report", "--op", str(tmp_path / "nope.enc"),
                 "--out", str(out)) == 2                       # missing archive
     assert _cli(monkeypatch, "report", "--out", str(out)) == 2  # neither --store nor --op
     assert not out.exists()
+
+
+# ---- PDF output -----------------------------------------------------------
+
+def test_render_pdf_bytes_without_secret() -> None:
+    pytest.importorskip("fpdf")
+    pdf = op_report.render_pdf(_seeded_bundle())
+    assert pdf[:5] == b"%PDF-" and b"Hunter2!" not in pdf
+
+
+def test_cli_report_op_pdf(tmp_path, monkeypatch) -> None:
+    pytest.importorskip("fpdf")
+    arc = _write_archive(tmp_path)
+    monkeypatch.setenv("EREBUS_ARCHIVE_PASSPHRASE", "pw")
+    out = tmp_path / "op.pdf"
+    assert _cli(monkeypatch, "report", "--op", str(arc), "--out", str(out)) == 0
+    assert out.read_bytes()[:5] == b"%PDF-"
+
+
+def test_console_report_pdf(tmp_path, capsys) -> None:
+    pytest.importorskip("fpdf")
+    con = _console()
+    con.fw.op_new("e", codename="K")
+    con.fw.store.add_finding("10.0.0.5", "mod", "x", severity="high", attack="T1046")
+    capsys.readouterr()
+    out = tmp_path / "op.pdf"
+    con.do_op(f"report {out}")
+    assert "wrote operation report" in capsys.readouterr().out
+    assert out.read_bytes()[:5] == b"%PDF-"
+
+
+# ---- /operations/report endpoint ------------------------------------------
+
+def _rpc_client(seed: bool = True):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from erebus.rpc.server import create_app
+    fw = Framework()
+    if seed:
+        fw.op_new("op", codename="KITE")
+        fw.store.add_finding("1.1.1.1", "m", "f", severity="low", attack="T1595")
+    return TestClient(create_app(fw, token="t"))
+
+
+def test_operations_report_endpoint_formats() -> None:
+    auth = {"Authorization": "Bearer t"}
+    with _rpc_client() as c:
+        assert c.get("/operations/report").status_code == 401        # token required
+        rh = c.get("/operations/report?format=html", headers=auth)
+        assert rh.status_code == 200 and "Operation KITE" in rh.text
+        rm = c.get("/operations/report?format=md", headers=auth)
+        assert rm.status_code == 200 and "text/markdown" in rm.headers["content-type"]
+        pytest.importorskip("fpdf")
+        rp = c.get("/operations/report?format=pdf", headers=auth)
+        assert rp.status_code == 200 and rp.content[:5] == b"%PDF-"
+
+
+def test_operations_report_endpoint_no_op_is_409() -> None:
+    with _rpc_client(seed=False) as c:
+        assert c.get("/operations/report", headers={"Authorization": "Bearer t"}
+                     ).status_code == 409
+
+
+def test_dashboard_wires_op_report_button() -> None:
+    with _rpc_client(seed=False) as c:
+        html = c.get("/").text
+    assert "function opsReport(" in html
+    assert "operations/report?format=" in html
+    assert 'id="ops-rep"' in html

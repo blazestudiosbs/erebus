@@ -182,8 +182,8 @@ class EreConsole(cmd.Cmd):
             return ""
 
     def _op_report(self, args: list[str]) -> None:
-        """op report <out.md|out.html>            — report the CURRENT op (live data)
-           op report <archive.enc> <out.md|.html> — report from a sealed archive"""
+        """op report <out.md|.html|.pdf>            — report the CURRENT op (live data)
+           op report <archive.enc> <out.md|.html|.pdf> — report from a sealed archive"""
         from .reporting import archive, op_report
         from .reporting import report as rpt
 
@@ -214,10 +214,18 @@ class EreConsole(cmd.Cmd):
             print("usage: op report <out.md|out.html> | op report <archive.enc> <out>")
             return
 
-        content = (op_report.render_html(bundle) if out_path.lower().endswith(".html")
-                   else op_report.render_markdown(bundle))
+        low = out_path.lower()
         try:
-            path = rpt.write_report(out_path, content, overwrite=True)
+            if low.endswith(".pdf"):
+                path = rpt.write_report_bytes(out_path, op_report.render_pdf(bundle),
+                                              overwrite=True)
+            else:
+                content = (op_report.render_html(bundle) if low.endswith(".html")
+                           else op_report.render_markdown(bundle))
+                path = rpt.write_report(out_path, content, overwrite=True)
+        except RuntimeError as exc:  # optional PDF dependency missing
+            print(col(f"  {exc}", "error"))
+            return
         except OSError as exc:
             print(col(f"  write failed: {exc}", "error"))
             return
