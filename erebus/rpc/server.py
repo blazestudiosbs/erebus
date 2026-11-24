@@ -496,6 +496,34 @@ def create_app(framework: Any, token: str | None = None,
         confirm = bool(payload.get("confirm", False))
         return framework.op_teardown(confirm=confirm)
 
+    @app.get("/operations/report", dependencies=[Depends(require_token)])
+    async def operation_report(format: str = "html") -> Any:
+        """Render the CURRENT operation's report (from live data) for download."""
+        from ..reporting import archive, op_report
+        cur = framework.store.current_operation()
+        if cur is None:
+            raise HTTPException(status_code=409, detail="no operation open")
+        try:
+            notes = _notes_path().read_text(encoding="utf-8")
+        except OSError:
+            notes = ""
+        bundle = archive.build_op_archive(framework.store, int(cur["id"]), notes_text=notes)
+        tag = cur["codename"] or cur["name"] or "operation"
+        base = "erebus-op-" + "".join(c if c.isalnum() else "-" for c in str(tag))[:40]
+        fmt = (format or "html").lower()
+        if fmt == "pdf":
+            try:
+                body = op_report.render_pdf(bundle)
+            except RuntimeError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from None
+            return Response(content=body, media_type="application/pdf",
+                            headers={"Content-Disposition": f"attachment; filename={base}.pdf"})
+        if fmt == "md":
+            text = op_report.render_markdown(bundle)
+            return Response(content=text, media_type="text/markdown; charset=utf-8",
+                            headers={"Content-Disposition": f"attachment; filename={base}.md"})
+        return HTMLResponse(op_report.render_html(bundle))
+
     @app.post("/operations/artifact", dependencies=[Depends(require_token)])
     async def log_artifact(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
         kind = str(payload.get("kind", "")).strip()

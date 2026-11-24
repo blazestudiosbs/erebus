@@ -68,10 +68,48 @@ TECHNIQUE_NAME = {
 }
 
 
+# A bundled subset of each technique's ATT&CK detection data sources — the telemetry
+# a blue team would watch to catch it. NOT the full ATT&CK dataset; it covers the
+# techniques Erebus's own modules declare. Used by the coverage matrix's purple-team
+# (detection) view. Sub-techniques inherit their parent's sources.
+TECHNIQUE_DATASOURCE = {
+    "T1003": ["OS API Execution", "Process Access", "Command Execution"],
+    "T1007": ["Command Execution", "Process Creation"],
+    "T1016": ["Command Execution", "Process Creation", "Script Execution"],
+    "T1033": ["Command Execution", "Process Creation"],
+    "T1046": ["Network Traffic", "Cloud Service"],
+    "T1057": ["Command Execution", "Process Creation", "OS API Execution"],
+    "T1068": ["Process Creation", "Driver Load"],
+    "T1082": ["Command Execution", "Process Creation", "OS API Execution"],
+    "T1110": ["Authentication Logs", "Application Log"],
+    "T1134": ["OS API Execution", "Process Metadata", "Command Execution"],
+    "T1543": ["Service Creation", "Process Creation", "Command Execution"],
+    "T1548": ["Process Creation", "Command Execution", "OS API Execution"],
+    "T1552": ["File Access", "Command Execution", "Process Access"],
+    "T1555": ["File Access", "Command Execution", "OS API Execution"],
+    "T1571": ["Network Traffic"],
+    "T1574": ["File Modification", "Module Load", "Service Metadata"],
+    "T1587": ["Internet Scan", "Malware Repository"],
+    "T1588": ["Internet Scan", "Malware Repository"],
+    "T1590": ["Internet Scan", "Network Traffic"],
+    "T1592": ["Internet Scan"],
+    "T1593": ["Internet Scan", "Application Log"],
+    "T1595": ["Network Traffic", "Internet Scan"],
+    "T1596": ["Internet Scan"],
+}
+
+
 def tactic_of(technique: str) -> str:
     """The tactic for a technique id (sub-techniques inherit the parent); else Uncategorized."""
     base = str(technique or "").split(".", 1)[0].strip().upper()
     return TECHNIQUE_TACTIC.get(base, UNCATEGORIZED)
+
+
+def datasources_of(technique: str) -> list[str]:
+    """ATT&CK detection data sources for a technique id (sub-techniques inherit the
+    parent); empty when the technique is outside the bundled subset."""
+    base = str(technique or "").split(".", 1)[0].strip().upper()
+    return list(TECHNIQUE_DATASOURCE.get(base, []))
 
 
 def name_of(technique: str) -> str:

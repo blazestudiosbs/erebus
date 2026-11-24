@@ -118,9 +118,6 @@ def _report_op(args: argparse.Namespace, fmt: str) -> int:
     if not arc.is_file():
         print(f"error: no archive at {args.op}")
         return 2
-    if fmt == "pdf":
-        print("error: PDF is not available for --op reports; use a .md or .html --out")
-        return 2
     # passphrase from the environment (for automation) or an interactive prompt —
     # never on the command line, where it would show in the process list.
     pw = os.environ.get("EREBUS_ARCHIVE_PASSPHRASE")
@@ -139,10 +136,17 @@ def _report_op(args: argparse.Namespace, fmt: str) -> int:
     except (OSError, archive.crypto.DecryptError) as exc:
         print(f"error: cannot read archive: {exc}")
         return 2
-    content = (op_report.render_markdown(bundle) if fmt == "md"
-               else op_report.render_html(bundle, theme=args.theme))
     try:
-        path = rpt.write_report(args.out, content, overwrite=args.force)
+        if fmt == "pdf":
+            path = rpt.write_report_bytes(
+                args.out, op_report.render_pdf(bundle), overwrite=args.force)
+        else:
+            content = (op_report.render_markdown(bundle) if fmt == "md"
+                       else op_report.render_html(bundle, theme=args.theme))
+            path = rpt.write_report(args.out, content, overwrite=args.force)
+    except RuntimeError as exc:  # optional PDF dependency missing
+        print(f"error: {exc}")
+        return 2
     except FileExistsError:
         print(f"error: {args.out} exists; use --force to overwrite")
         return 2
@@ -465,7 +469,7 @@ def main() -> None:
     rep.add_argument("--store", help="framework datastore file to report on (whole engagement)")
     rep.add_argument("--op", metavar="ARCHIVE", default=None,
                      help="report a single operation from its sealed archive "
-                          "(.md/.html only; passphrase via EREBUS_ARCHIVE_PASSPHRASE "
+                          "(.md/.html/.pdf; passphrase via EREBUS_ARCHIVE_PASSPHRASE "
                           "or an interactive prompt)")
     rep.add_argument("--out", required=True, metavar="FILE", help="report file to write")
     rep.add_argument("--format", choices=["html", "md", "pdf"], default=None,

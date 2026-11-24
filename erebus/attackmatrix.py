@@ -18,23 +18,42 @@ from __future__ import annotations
 
 from typing import Any
 
-from .reporting.attack import TACTICS, UNCATEGORIZED, name_of, tactic_of
+from .reporting.attack import (
+    TACTICS,
+    UNCATEGORIZED,
+    datasources_of,
+    name_of,
+    tactic_of,
+)
 
 
 def _base(technique: str) -> str:
     return str(technique or "").split(".", 1)[0].strip().upper()
 
 
+def _full(technique: str) -> str:
+    return str(technique or "").strip().upper()
+
+
 def build_attack_matrix(loader: Any, store: Any) -> dict[str, Any]:
     """Assemble the coverage matrix from the module catalogue and the datastore."""
-    # capability: base technique -> the module keys that declare it
+    # capability: base technique -> module keys declaring it; subs: base -> full
+    # sub-technique ids (e.g. T1595 -> {T1595.002, T1595.003})
     cap: dict[str, set[str]] = {}
+    subs: dict[str, set[str]] = {}
     key_techs: dict[str, list[str]] = {}
     for key, cls in loader.all():
-        techs = [_base(t) for t in (getattr(cls, "attack", []) or []) if _base(t)]
-        key_techs[key] = techs
-        for t in techs:
-            cap.setdefault(t, set()).add(key)
+        bases: list[str] = []
+        for tag in (getattr(cls, "attack", []) or []):
+            full = _full(tag)
+            base = _base(full)
+            if not base:
+                continue
+            bases.append(base)
+            cap.setdefault(base, set()).add(key)
+            if "." in full:
+                subs.setdefault(base, set()).add(full)
+        key_techs[key] = bases
 
     # exercised: a job whose module declares the technique, or a finding carrying it
     job_count: dict[str, int] = {}
@@ -43,9 +62,12 @@ def build_attack_matrix(loader: Any, store: Any) -> dict[str, Any]:
             job_count[t] = job_count.get(t, 0) + 1
     find_count: dict[str, int] = {}
     for f in store.findings():
-        base = _base(f["attack"])
+        full = _full(f["attack"])
+        base = _base(full)
         if base:
             find_count[base] = find_count.get(base, 0) + 1
+            if "." in full:
+                subs.setdefault(base, set()).add(full)
 
     all_techs = set(cap) | set(find_count)
     buckets: dict[str, list[dict[str, Any]]] = {}
@@ -55,6 +77,8 @@ def build_attack_matrix(loader: Any, store: Any) -> dict[str, Any]:
             "id": t, "name": name_of(t), "modules": sorted(cap.get(t, set())),
             "covered": t in cap, "exercised": exercised,
             "jobs": job_count.get(t, 0), "findings": find_count.get(t, 0),
+            "subtechniques": sorted(subs.get(t, set())),
+            "data_sources": datasources_of(t),
         })
 
     tactics: list[dict[str, Any]] = []
@@ -69,10 +93,15 @@ def build_attack_matrix(loader: Any, store: Any) -> dict[str, Any]:
             "exercised": sum(1 for e in items if e["exercised"]),
         })
 
+    data_sources: set[str] = set()
+    for t in cap:
+        data_sources.update(datasources_of(t))
     stats = {
         "techniques_covered": len(cap),
         "techniques_exercised": sum(
             1 for t in all_techs if job_count.get(t, 0) or find_count.get(t, 0)),
+        "subtechniques": sum(len(v) for v in subs.values()),
+        "data_sources": len(data_sources),
         "tactics_touched": len(tactics),
         "modules": len(key_techs),
     }

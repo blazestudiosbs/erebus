@@ -361,6 +361,8 @@
   .atk-cell.exercised{ border-color:#2f7d53; background:linear-gradient(180deg,#143524,#0f241a); }
   .atk-cell.exercised .atk-nm{ color:#8affc0; }
   .atk-cell.covered{ border-color:#3a2d55; background:linear-gradient(180deg,#1a1430,#140f26); }
+  .atk-subs{ display:block; margin-top:3px; font-family:ui-monospace,monospace; font-size:9px;
+    color:#b98bff; letter-spacing:.3px; }
   .atk-leg{ color:#6f6690; white-space:nowrap; }
   .atk-leg .atk-cell{ display:inline-block; width:14px; height:11px; padding:0; margin:0 4px -1px 10px; }
 </style>
@@ -1054,6 +1056,8 @@
     var s=d.stats||{}, tiles=document.getElementById('atk-tiles');
     if(tiles) tiles.innerHTML = atkTile('techniques covered', s.techniques_covered||0)
       + atkTile('exercised', s.techniques_exercised||0, (s.techniques_exercised?'#5dffa5':'#6f6690'))
+      + atkTile('sub-techniques', s.subtechniques||0)
+      + atkTile('detection sources', s.data_sources||0)
       + atkTile('tactics touched', s.tactics_touched||0)
       + atkTile('modules', s.modules||0);
     var mx=document.getElementById('atk-matrix'), tactics=d.tactics||[];
@@ -1062,10 +1066,15 @@
     mx.innerHTML = tactics.map(function(t){
       var cells=t.techniques.map(function(e){
         var cls = e.exercised?'exercised':(e.covered?'covered':'seen');
+        var subs=e.subtechniques||[], ds=e.data_sources||[];
         var tip = e.id+' '+e.name+(e.modules&&e.modules.length?(' — '+e.modules.join(', ')):'')
+          +(subs.length?(' — sub: '+subs.join(', ')):'')
+          +(ds.length?(' · detect: '+ds.join(', ')):'')
           +(e.jobs?(' ['+e.jobs+' run]'):'')+(e.findings?(' ['+e.findings+' finding]'):'');
+        var subhtml = subs.length ? '<span class="atk-subs">'
+          +subs.map(function(x){return '.'+escHtml(x.split('.')[1]);}).join(' ')+'</span>' : '';
         return '<div class="atk-cell '+cls+'" title="'+escHtml(tip)+'"><span class="atk-id">'+escHtml(e.id)
-          +'</span><span class="atk-nm">'+escHtml(e.name)+'</span></div>';
+          +'</span><span class="atk-nm">'+escHtml(e.name)+'</span>'+subhtml+'</div>';
       }).join('');
       return '<div class="atk-col"><div class="atk-head">'+escHtml(t.tactic)
         +'<span class="atk-cnt">'+t.exercised+'/'+t.techniques.length+'</span></div>'+cells+'</div>';
@@ -1111,9 +1120,13 @@
         act.innerHTML='<button class="btn sm" id="ops-end">End op</button>'
           +'<button class="btn sm" id="ops-tdprev">Preview teardown</button>'
           +'<button class="btn sm" id="ops-td">Run teardown</button>'
-          +'<button class="btn sm" id="ops-arch">Archive&hellip;</button>';
+          +'<button class="btn sm" id="ops-arch">Archive&hellip;</button>'
+          +'<button class="btn sm" id="ops-rep">Report</button>'
+          +'<button class="btn sm" id="ops-rep-pdf">PDF</button>';
         opsWire('ops-end',opsEnd); opsWire('ops-tdprev',opsTeardownPreview);
         opsWire('ops-td',opsTeardownRun); opsWire('ops-arch',opsArchive);
+        opsWire('ops-rep',function(){ opsReport('html',true); });
+        opsWire('ops-rep-pdf',function(){ opsReport('pdf',false); });
       } else { act.innerHTML=''; var td=document.getElementById('ops-teardown'); if(td) td.innerHTML='<div class="empty">&mdash;</div>'; }
     }
     var list=document.getElementById('ops-list');
@@ -1157,6 +1170,19 @@
         opsNote('teardown: closed '+((r.closed_sessions||[]).length)+' session(s), '+((r.closed_forwards||[]).length)+' forward(s)'+(pend?('; '+pend+' artifact(s) need manual reversal'):''),'#5dffa5');
         opsTeardownPreview(); opsLoad(); }
       else opsNote('failed: '+((res.j&&res.j.detail)||res.status),'#ff6a6a'); });
+  }
+  function opsReport(fmt, open){
+    if(!hasTok()){ opsNote('connect to a live server first','#ff9d2e'); return; }
+    opsNote('generating '+fmt.toUpperCase()+' report…','#22e0ff');
+    fetch('operations/report?format='+fmt,{headers:{'Authorization':'Bearer '+window.EREBUS_TOKEN}})
+      .then(function(r){ if(!r.ok) return r.json().then(function(j){ throw new Error((j&&j.detail)||r.status); });
+        return r.blob(); })
+      .then(function(blob){ var url=URL.createObjectURL(blob);
+        if(open){ window.open(url,'_blank'); opsNote('opened HTML report in a new tab','#5dffa5'); }
+        else { var a=document.createElement('a'); a.href=url; a.download='erebus-op-report.'+fmt;
+          document.body.appendChild(a); a.click(); a.remove(); opsNote(fmt.toUpperCase()+' report downloaded','#5dffa5'); }
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 10000); })
+      .catch(function(e){ opsNote('report failed: '+e.message,'#ff6a6a'); });
   }
   function opsArchive(){
     if(!hasTok()){ opsNote('connect to a live server first','#ff9d2e'); return; }

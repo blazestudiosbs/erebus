@@ -10,6 +10,19 @@ this project uses [Semantic Versioning](https://semver.org).
   using the `op_id` those records already carry. The selection is global — it persists
   as you move between tabs — and each tab shows an op-aware empty state when a filter
   hides everything. Filtering is client-side; no new endpoints or data are exposed.
+- **Deeper ATT&CK coverage**: the coverage matrix now goes beyond base techniques.
+  Each technique entry carries the specific **sub-techniques** observed (from module tags
+  and findings, e.g. `T1595` → `.002`, `.003`) and its ATT&CK **detection data sources**
+  (a bundled subset in `reporting/attack.py`, the telemetry a blue team would watch).
+  The dashboard **ATT&CK** tab shows sub-technique chips under each cell and lists data
+  sources in the tooltip, with new "sub-techniques" and "detection sources" stat tiles;
+  the console `attack` command shows sub-techniques and a `detect:` line per technique.
+- **Per-operation reports as PDF + a dashboard download**: op reports can now be rendered
+  as **PDF** (`op_report.render_pdf`, optional `fpdf2`), wired into console `op report
+  <out.pdf>` and CLI `erebus report --op … --out report.pdf`. The **Operations** dashboard
+  tab gains **Report** (opens the HTML report in a tab) and **PDF** (downloads) buttons,
+  backed by a token-gated `GET /operations/report?format=html|md|pdf` that renders the
+  current op from live data. Secret values stay absent from every format.
 - **Per-operation reporting**: render a report scoped to a single operation, rebuilt
   from its archived logbook. `erebus/reporting/op_report.py` turns an archive bundle
   (op record + findings, sessions, evidence, redacted credentials, artifacts, notes,

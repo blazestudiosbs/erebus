@@ -11,7 +11,33 @@ import pytest
 from erebus.attackmatrix import build_attack_matrix
 from erebus.console import EreConsole
 from erebus.core.framework import Framework
-from erebus.reporting.attack import TACTICS, name_of, tactic_of
+from erebus.reporting.attack import TACTICS, datasources_of, name_of, tactic_of
+
+
+def _find(matrix, tid):
+    return next(e for t in matrix["tactics"] for e in t["techniques"] if e["id"] == tid)
+
+
+def test_datasources_mapping() -> None:
+    assert "Network Traffic" in datasources_of("T1046")
+    assert datasources_of("T1046.001") == datasources_of("T1046")   # sub inherits parent
+    assert datasources_of("T9999") == []                            # unknown -> empty
+
+
+def test_matrix_carries_subtechniques_and_data_sources() -> None:
+    fw = Framework()
+    m = build_attack_matrix(fw.loader, fw.store)
+    t1595 = _find(m, "T1595")
+    assert t1595["subtechniques"] == ["T1595.002", "T1595.003"]
+    assert "Network Traffic" in t1595["data_sources"]
+    assert m["stats"]["subtechniques"] > 0 and m["stats"]["data_sources"] > 0
+
+
+def test_subtechnique_from_finding_is_collected() -> None:
+    fw = Framework()
+    fw.store.add_finding("10.0.0.1", "mod", "x", severity="info", attack="T1110.003")
+    m = build_attack_matrix(fw.loader, fw.store)
+    assert "T1110.003" in _find(m, "T1110")["subtechniques"]
 
 
 def test_added_technique_mappings_and_names() -> None:
