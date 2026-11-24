@@ -5,6 +5,17 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Per-operation reporting**: render a report scoped to a single operation, rebuilt
+  from its archived logbook. `erebus/reporting/op_report.py` turns an archive bundle
+  (op record + findings, sessions, evidence, redacted credentials, artifacts, notes,
+  jobs) into Markdown or self-contained HTML, reusing the engagement report's helpers
+  for a consistent look: an Operation header with the scope snapshot, severity summary,
+  findings (worst-first), sessions, credentials (username only — secret values are
+  never in an archive, so never in a report), evidence, an ATT&CK heatmap, teardown
+  artifacts with their revert hints, notes, and reproduction steps. Console
+  `op report <out.md|out.html>` reports the current op from live data;
+  `op report <archive.enc> <out>` unseals a sealed archive (passphrase prompted) and
+  reports from it.
 - **ATT&CK coverage matrix (platform roadmap Phase 4)**: a purple-team view over the
   module catalogue. `erebus/attackmatrix.py` reads every module's declared `attack`
   technique tags (capability) against job history and findings (exercised) and groups
