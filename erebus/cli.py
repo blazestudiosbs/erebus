@@ -235,6 +235,12 @@ def _update(args: argparse.Namespace) -> int:
     return 0
 
 
+def _doctor(args: object) -> int:
+    from .doctor import collect, render
+    print(render(collect()))
+    return 0
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
@@ -342,6 +348,8 @@ def main() -> None:
     upd.add_argument("--no-templates", action="store_true",
                      help="skip the nuclei template refresh")
 
+    sub.add_parser("doctor", help="preflight: check tools, deps, intel DB, workspace")
+
     args = p.parse_args()
     if args.cmd == "intel":
         _intel(args)
@@ -357,6 +365,8 @@ def main() -> None:
         raise SystemExit(_tui(args))
     elif args.cmd == "update":
         raise SystemExit(_update(args))
+    elif args.cmd == "doctor":
+        raise SystemExit(_doctor(args))
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve

@@ -50,6 +50,7 @@ out of git entirely (already covered by `.gitignore`) — version-control privat
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"          # or ".[rpc,report,connectors]" for the optional bits
 
+erebus doctor                     # preflight: tools, deps, intel DB, workspace
 ereconsole                        # interactive console
 #   scope allow 192.168.56.0/24
 #   use auxiliary/scanner/portscan ; set RHOSTS 192.168.56.10 ; run
