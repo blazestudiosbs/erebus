@@ -343,6 +343,11 @@
   .hf-reach .r .v{ color:#6f6690; }
   .ops-actions{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 0; }
   .ops-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+  .opfbar{ display:flex; align-items:center; gap:8px; margin:0 0 14px; }
+  .opfbar .opfl{ font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#8a81ad; }
+  .opf-sel{ background:rgba(16,12,28,0.9); border:1px solid #2a2340; border-radius:7px;
+    padding:5px 9px; color:#e6e1ff; font-size:12px; outline:none; cursor:pointer; }
+  .opf-sel:focus{ border-color:#a970ff; }
   .atk-matrix{ display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; }
   .atk-col{ flex:1 1 150px; min-width:140px; max-width:210px; }
   .atk-head{ font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#8a81ad;
@@ -662,13 +667,13 @@
     else if(name==='Modules'){ loadModules(); }
     else if(name==='DNS'){ dnsInit(); }
     else if(name==='Guide'){ wikiInit(); }
-    else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
+    else if(name==='Findings'){ opfInject('findingsview',loadFindings); loadFindings(); pollTimer=setInterval(loadFindings,4000); }
     else if(name==='OSINT'){ osintInit(); }
     else if(name==='Homefield'){ hfInit(); }
-    else if(name==='Jobs'){ loadJobs(); pollTimer=setInterval(loadJobs,3000); }
-    else if(name==='Sessions'){ loadSessions(); pollTimer=setInterval(loadSessions,4000); }
+    else if(name==='Jobs'){ opfInject('jobsview',loadJobs); loadJobs(); pollTimer=setInterval(loadJobs,3000); }
+    else if(name==='Sessions'){ opfInject('sessionsview',loadSessions); loadSessions(); pollTimer=setInterval(loadSessions,4000); }
     else if(name==='Pivots'){ loadPivots(); pollTimer=setInterval(loadPivots,3000); }
-    else if(name==='Creds'){ loadCreds(); pollTimer=setInterval(loadCreds,5000); }
+    else if(name==='Creds'){ opfInject('credsview',loadCreds); loadCreds(); pollTimer=setInterval(loadCreds,5000); }
     else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
     else if(name==='ATT&CK'){ attackInit(); }
     else if(name==='Ops'){ opsInit(); }
@@ -689,6 +694,29 @@
     .then(function(r){ return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};},function(){return {ok:r.ok,status:r.status,j:{}};}); }); }
   function apiDelete(path){ return fetch(path,{method:'DELETE',headers:authH()})
     .then(function(r){ return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};},function(){return {ok:r.ok,status:r.status,j:{}};}); }); }
+
+  // ---- operation filter (shared across data tabs) ----------------------
+  var OPF='';  // '' = all operations; otherwise an op id (string)
+  function opfMatch(row){ return !OPF || String(row && row.op_id)===String(OPF); }
+  function opfInject(panelId, reloadFn){
+    var panel=document.getElementById(panelId); if(!panel) return;
+    var wrap=panel.querySelector('.pwrap'); if(!wrap) return;
+    var bar=wrap.querySelector('.opfbar');
+    if(!bar){ bar=document.createElement('div'); bar.className='opfbar';
+      bar.innerHTML='<span class="opfl">operation</span>';
+      var sel=document.createElement('select'); sel.className='opf-sel'; bar.appendChild(sel);
+      wrap.insertBefore(bar, wrap.firstChild);
+      sel.onchange=function(){ OPF=sel.value; reloadFn(); };
+    }
+    var sel2=bar.querySelector('.opf-sel');
+    if(!hasTok()){ sel2.innerHTML='<option value="">All operations</option>'; sel2.value=OPF; return; }
+    fetch('operations',{headers:authH(),cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+      var ops=(d.operations||[]);
+      sel2.innerHTML='<option value="">All operations</option>'+ops.map(function(o){
+        return '<option value="'+o.id+'">#'+o.id+' '+escHtml(o.codename||o.name||('op '+o.id))+'</option>'; }).join('');
+      sel2.value=OPF;
+    }).catch(function(){});
+  }
 
   // ---- scope / guardrails ----------------------------------------------
   function renderScope(d){
@@ -806,8 +834,8 @@
     return '<div class="detail">'+r+'<div class="steps"><h5>Suggested next steps</h5><ul>'+steps+'</ul></div></div>';
   }
   function renderFindings(d){ var box=document.getElementById('find-list'); if(!box) return;
-    var fs=(d.findings||d.rows||d||[]); FINDINGS=fs;
-    if(!fs.length){ box.innerHTML='<div class="empty">no findings yet - run a scan (e.g. Web scan / nuclei) from the Targets tab</div>'; return; }
+    var fs=(d.findings||d.rows||d||[]).filter(opfMatch); FINDINGS=fs;
+    if(!fs.length){ box.innerHTML='<div class="empty">'+(OPF?'no findings for this operation':'no findings yet - run a scan (e.g. Web scan / nuclei) from the Targets tab')+'</div>'; return; }
     box.innerHTML=fs.map(function(f){ var sev=String(f.severity||'info').toLowerCase();
       var k=findKey(f), open=!!findOpen[k];
       var meta=[f.host,(f.kev?'KEV':''),(f.attack||f.technique||''),(f.cve||'')].filter(Boolean).join('  -  ');
@@ -829,8 +857,8 @@
   function loadJobs(){ fetch('jobs',{cache:'no-store'}).then(function(r){return r.json();}).then(renderJobs)
     .catch(function(){ var b=document.getElementById('jobs-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
   function renderJobs(d){ var box=document.getElementById('jobs-list'); if(!box) return;
-    var js=(d.jobs||[]);
-    if(!js.length){ box.innerHTML='<div class="empty">no jobs yet - start a module from the Targets or Modules tab</div>'; return; }
+    var js=(d.jobs||[]).filter(opfMatch);
+    if(!js.length){ box.innerHTML='<div class="empty">'+(OPF?'no jobs for this operation':'no jobs yet - start a module from the Targets or Modules tab')+'</div>'; return; }
     box.innerHTML='<table class="jtbl"><thead><tr><th>#</th><th>module</th><th>target</th><th>status</th><th>took</th><th>when</th></tr></thead><tbody>'
       +js.map(function(j){ var st=String(j.status||'queued');
         var when=j.started?new Date(j.started*1000).toLocaleString():'';
@@ -847,8 +875,8 @@
     .catch(function(){ var b=document.getElementById('sessions-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
   var sessSel=null;
   function renderSessions(d){ var box=document.getElementById('sessions-list'); if(!box) return;
-    var ss=(d.sessions||[]);
-    if(!ss.length){ box.innerHTML='<div class="empty">no sessions yet - catch a shell with a handler (e.g. auxiliary/handler/reverse_tcp)</div>'; return; }
+    var ss=(d.sessions||[]).filter(opfMatch);
+    if(!ss.length){ box.innerHTML='<div class="empty">'+(OPF?'no sessions for this operation':'no sessions yet - catch a shell with a handler (e.g. auxiliary/handler/reverse_tcp)')+'</div>'; return; }
     box.innerHTML='<table class="jtbl"><thead><tr><th>#</th><th>host</th><th>type</th><th>transport</th><th>state</th><th>opened</th><th></th></tr></thead><tbody>'
       +ss.map(function(x){
         var live=!!x.live, col=live?'#36d399':'#6f6690', lbl=live?'live':(x.closed?'closed':'stale');
@@ -1257,8 +1285,8 @@
   function loadCreds(){ fetch('credentials',{cache:'no-store'}).then(function(r){return r.json();}).then(renderCreds)
     .catch(function(){ var b=document.getElementById('creds-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
   function renderCreds(d){ var box=document.getElementById('creds-list'); if(!box) return;
-    var cs=(d.credentials||[]);
-    if(!cs.length){ box.innerHTML='<div class="empty">no credentials yet - run post/linux_creds or post/windows_creds on a session</div>'; return; }
+    var cs=(d.credentials||[]).filter(opfMatch);
+    if(!cs.length){ box.innerHTML='<div class="empty">'+(OPF?'no credentials for this operation':'no credentials yet - run post/linux_creds or post/windows_creds on a session')+'</div>'; return; }
     box.innerHTML='<table class="jtbl"><thead><tr><th>host</th><th>service</th><th>username</th><th>kind</th><th>secret</th><th>source</th></tr></thead><tbody>'
       +cs.map(function(c){
         var sec=c.has_secret?'<span class="jbadge" style="color:#36d399;border-color:#36d399">set</span>':'<span class="jmut">-</span>';

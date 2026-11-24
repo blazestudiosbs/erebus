@@ -5,6 +5,11 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Operation-aware dashboard filtering**: a shared **operation** dropdown on the
+  Findings, Jobs, Sessions and Credentials tabs narrows each to a single engagement,
+  using the `op_id` those records already carry. The selection is global — it persists
+  as you move between tabs — and each tab shows an op-aware empty state when a filter
+  hides everything. Filtering is client-side; no new endpoints or data are exposed.
 - **Per-operation reporting**: render a report scoped to a single operation, rebuilt
   from its archived logbook. `erebus/reporting/op_report.py` turns an archive bundle
   (op record + findings, sessions, evidence, redacted credentials, artifacts, notes,
