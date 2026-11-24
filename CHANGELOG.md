@@ -4,12 +4,17 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+
+## [0.2.0] — 2026-11-23
 ### Added
 - Web-recon scanners: `http_probe`, `tls_scan`, `web_content`.
 - OSINT collectors: `dns_records`, `whois_rdap`, `asn`; importers: `masscan`,
   `httpx`, `subfinder`.
 - Lab range (`labrange/docker-compose.yml`) + opt-in integration tests.
-- Docs: architecture + writing-a-module; issue/PR templates; this changelog.
+- Docs: architecture + writing-a-module guide; issue/PR templates; changelog.
+### Changed
+- Report module docstring corrected (ATT&CK heatmap already groups by tactic);
+  verified the sandbox "never runs untrusted code on the host" guarantee.
 
 ## [0.1.0] — 2026-11-23
 First milestone — a usable, tested, authorized-use security research framework.
