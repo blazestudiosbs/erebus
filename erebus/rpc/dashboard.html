@@ -555,7 +555,7 @@
   }
   function findDetail(f){
     function row(k,v){ return v?('<div class="row"><span class="k">'+k+'</span>'+v+'</div>'):''; }
-    var r=row('host',f.host)+row('module',f.module)+row('severity',f.severity)+row('cve',f.cve)
+    var r=row('host',f.host)+row('module',f.module)+row('severity',f.severity)+row('cve',f.cve)+row('cvss',(typeof f.cvss==='number')?f.cvss:'')
       +row('kev',f.kev?'yes (CISA KEV)':'')+row('epss',(typeof f.epss==='number')?Number(f.epss).toFixed(2):'')
       +row('att&ck',f.attack)+row('matched',f.evidence_ref)
       +row('time',f.ts?new Date(f.ts*1000).toLocaleString():'');

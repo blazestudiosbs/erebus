@@ -114,12 +114,16 @@ class VulnMap(Auxiliary):
                     epss = float(row["epss"]) if row["epss"] is not None else None
                 except (TypeError, ValueError):
                     epss = None
+                try:
+                    cvss = float(row["cvss"]) if row["cvss"] is not None else None
+                except (TypeError, ValueError):
+                    cvss = None
                 svc_label = " ".join(x for x in (s.get("name"), product, version) if x)
                 title = f"{cve} - {product}{(' ' + version) if version else ''}"
                 self.add_target(host, "noted")
                 self.add_finding(
                     host, title, severity=sev, cve=cve, kev=is_kev, epss=epss,
-                    evidence_ref=f"{where} {svc_label}".strip(),
+                    cvss=cvss, evidence_ref=f"{where} {svc_label}".strip(),
                 )
                 tag = "  [KEV]" if is_kev else ""
                 ep = f"  EPSS {epss:.2f}" if isinstance(epss, float) else ""

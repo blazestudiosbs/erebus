@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS services(
   UNIQUE(host, port, proto));
 CREATE TABLE IF NOT EXISTS findings(
   id INTEGER PRIMARY KEY, host TEXT, module TEXT, title TEXT, severity TEXT,
-  cve TEXT, kev INTEGER, epss REAL, attack TEXT, evidence_ref TEXT, ts REAL);
+  cve TEXT, kev INTEGER, epss REAL, cvss REAL, attack TEXT, evidence_ref TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS sessions(
   id INTEGER PRIMARY KEY, host TEXT, type TEXT, transport TEXT,
   opened REAL, closed REAL);
@@ -54,7 +54,14 @@ class Store:
         self._lock = threading.Lock()
         with self._lock:
             self.db.executescript(SCHEMA)
+            self._migrate()
             self.db.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a store was first created (idempotent)."""
+        have = {r[1] for r in self.db.execute("PRAGMA table_info(findings)")}
+        if "cvss" not in have:
+            self.db.execute("ALTER TABLE findings ADD COLUMN cvss REAL")
 
     def add_target(self, host: str, status: str = "discovered") -> None:
         now = time.time()
@@ -85,14 +92,14 @@ class Store:
     def add_finding(
         self, host: str, module: str, title: str, severity: str = "info",
         cve: str = "", kev: bool = False, epss: float | None = None,
-        attack: str = "", evidence_ref: str = "", **_: Any,
+        cvss: float | None = None, attack: str = "", evidence_ref: str = "", **_: Any,
     ) -> None:
         with self._lock:
             self.db.execute(
                 "INSERT INTO findings"
-                "(host,module,title,severity,cve,kev,epss,attack,evidence_ref,ts) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?)",
-                (host, module, title, severity, cve, int(bool(kev)), epss, attack,
+                "(host,module,title,severity,cve,kev,epss,cvss,attack,evidence_ref,ts) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (host, module, title, severity, cve, int(bool(kev)), epss, cvss, attack,
                  evidence_ref, time.time()),
             )
             self.db.commit()
