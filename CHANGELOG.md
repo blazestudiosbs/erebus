@@ -5,6 +5,17 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Audit scanner & post modules (read-only)**: two new advisory modules.
+  `auxiliary/scanner/http_headers` audits a web service's HTTP security response headers
+  (HSTS, CSP, X-Frame-Options/`frame-ancestors`, `X-Content-Type-Options: nosniff`,
+  Referrer-Policy, Permissions-Policy, version disclosure and cookie flags) via a pure,
+  testable `audit_headers()` core; it is scope-gated through `RHOSTS` and only does one
+  GET per endpoint. `post/linux_persistence_audit` surveys the Linux autostart surface
+  over an existing session — cron, enabled systemd services/timers, per-user units, SSH
+  `authorized_keys`, shell rc files and `/etc/rc.local` — through a pure
+  `audit_persistence()` core, emitting an `info`-severity inventory for blue-team
+  baselining. Both are strictly read-only: they install nothing and change nothing on the
+  target.
 - **Fuzz bench deepening (researcher role)**: the fuzzing bench now drives three backends
   — AFL++, **libFuzzer** (the instrumented target is the fuzzer) and **honggfuzz** — via a
   `build_argv` dispatcher and per-backend crash-layout collection (`crashes/`, `crash-*`,
