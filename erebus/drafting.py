@@ -4,8 +4,9 @@ This is the only place the LLM touches module code, and it is deliberately
 fenced in:
 
 * It drafts ONLY the body of ``run()`` - never the class, the options, or the
-  module type. The scaffolder still refuses exploit/payload types, so drafting
-  can only ever fill an auxiliary/post skeleton.
+  module type. The scaffolder emits an EMPTY exploit skeleton but the drafter
+  never writes an exploit/payload body, so drafting can only ever fill an
+  auxiliary/post skeleton.
 * The draft is validated: it must parse, and it must not import or call a
   banned (non-passive / code-exec / filesystem-write) API. A draft that fails
   validation is discarded and the plain TODO stub is used instead - drafting

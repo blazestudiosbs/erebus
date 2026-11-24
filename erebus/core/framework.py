@@ -233,6 +233,21 @@ class Framework:
                 out.append(str(v))
         return out
 
+    def check(self, module: Module) -> Any:
+        """Run a module's ``check()`` (vulnerability probe), scope-gated like a run.
+
+        Returns the module's CheckResult. Raises OptionError for missing options
+        or ScopeError if the target is out of scope — a check still touches the
+        target, so it is gated exactly like running the module.
+        """
+        missing = module.missing()
+        if missing:
+            raise OptionError("missing required options: " + ", ".join(missing))
+        targets = self._targets_of(module)
+        if targets:
+            self.scope.check(targets)  # raises ScopeError if out of scope
+        return module.check()
+
     def run(self, module: Module, background: bool = True) -> int:
         missing = module.missing()
         if missing:

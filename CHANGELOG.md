@@ -5,6 +5,14 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Exploit module type (red-team role)**: the module scaffolder now emits an **empty,
+  scope-gated `exploit` skeleton** — `check()` + `exploit()` as TODOs, `RHOSTS` so the
+  framework's deny-all scope gate applies automatically, and `Rank.MANUAL` — for an
+  operator to implement against a target they are authorized to test. The framework
+  gained a scope-gated `check(module)` and the console a `check` verb (run a module's
+  vulnerability probe). `payload`/`encoder` generation stays refused (no shellcode or
+  evasion encoders), and the AI drafter still never writes an exploit body — an exploit
+  skeleton is always the plain mechanical stub for the operator to fill in by hand.
 - **Operation filter extended to the Homefield graph**: the shared operation dropdown
   now also scopes the Homefield knowledge graph. `build_graph(store, op_id=…)` restricts
   the estate to the hosts an operation touched (its op-tagged findings/credentials/
