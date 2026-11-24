@@ -480,7 +480,13 @@ class EreConsole(cmd.Cmd):
             for e in tac["techniques"]:
                 mark = (col("●", "good") if e["exercised"]
                         else (col("○", "dim") if e["covered"] else col("·", "dim")))
-                print(f"    {mark} {e['id']:10} {e['name']}")
+                subs = e.get("subtechniques") or []
+                sub_s = (" " + col("[" + ", ".join(s.split(".", 1)[1] for s in subs) + "]",
+                                   "accent")) if subs else ""
+                print(f"    {mark} {e['id']:10} {e['name']}{sub_s}")
+                ds = e.get("data_sources") or []
+                if ds:
+                    print(col(f"        detect: {', '.join(ds)}", "dim"))
 
     def do_ask(self, arg: str) -> None:
         """ask <question>  — ask the LLM copilot about the current engagement."""

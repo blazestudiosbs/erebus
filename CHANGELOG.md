@@ -5,6 +5,13 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Deeper ATT&CK coverage**: the coverage matrix now goes beyond base techniques.
+  Each technique entry carries the specific **sub-techniques** observed (from module tags
+  and findings, e.g. `T1595` → `.002`, `.003`) and its ATT&CK **detection data sources**
+  (a bundled subset in `reporting/attack.py`, the telemetry a blue team would watch).
+  The dashboard **ATT&CK** tab shows sub-technique chips under each cell and lists data
+  sources in the tooltip, with new "sub-techniques" and "detection sources" stat tiles;
+  the console `attack` command shows sub-techniques and a `detect:` line per technique.
 - **Per-operation reporting**: render a report scoped to a single operation, rebuilt
   from its archived logbook. `erebus/reporting/op_report.py` turns an archive bundle
   (op record + findings, sessions, evidence, redacted credentials, artifacts, notes,
