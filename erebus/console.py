@@ -335,6 +335,9 @@ def add_console_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--port", type=int, default=8777, help="dashboard port (with --serve)")
     p.add_argument("--scope", default=None, metavar="FILE",
                    help="preload scope guardrails from a file (one target per line)")
+    p.add_argument("--enable-session-exec", action="store_true",
+                   help="allow the web API to run commands on caught sessions "
+                        "(opt-in, audited; off by default)")
     p.add_argument("--lab", action="store_true",
                    help="LAB MODE: disable the scope gate (allow-all) — isolated lab networks only")
 
@@ -351,7 +354,7 @@ def launch(store: str | None = None, edition: str = "workstation", log: str | No
            journal_dir: str | None = None, evidence_dir: str | None = None,
            serve: bool = False, host: str = "127.0.0.1", port: int = 8777,
            token: str | None = None, scope_file: str | None = None,
-           lab: bool = False) -> None:
+           lab: bool = False, enable_session_exec: bool = False) -> None:
     """Build the framework, optionally co-host the dashboard, and run the REPL."""
     if store is None:
         from .core.datastore import default_store_path
@@ -370,7 +373,8 @@ def launch(store: str | None = None, edition: str = "workstation", log: str | No
     if serve:
         from .rpc.server import serve_in_thread
         try:
-            server, _, tok = serve_in_thread(fw, host=host, port=port, token=token)
+            server, _, tok = serve_in_thread(fw, host=host, port=port, token=token,
+                                             enable_session_exec=enable_session_exec)
             print(col(f"  RPC token: {tok}", "dim"))
             from .lib.term import link as _link
             print(col(f"◆ dashboard → {_link(f'http://{host}:{port}')}  "
