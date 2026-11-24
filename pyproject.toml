@@ -29,6 +29,9 @@ ereconsole = "erebus.console:main"
 [tool.hatch.build.targets.wheel]
 packages = ["erebus"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"erebus/osint/data/arf.json" = "erebus/osint/data/arf.json"
+
 [tool.ruff]
 line-length = 100
 target-version = "py39"
