@@ -100,10 +100,6 @@
   .osint-ctl{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center; }
   .osint-ctl input[type=text], .osint-ctl input:not([type]){ flex:1; min-width:200px; background:rgba(16,12,28,0.9); border:1px solid #2a2340; border-radius:7px; padding:7px 10px; color:#e6e1ff; font-size:13px; outline:none; }
   .osint-chk{ font-size:12px; color:#c9c2ea; display:flex; gap:4px; align-items:center; }
-  .osint-cats{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
-  .ochip{ cursor:pointer; font-size:11px; padding:3px 9px; border:1px solid #2a2340; border-radius:999px; color:#c9c2ea; }
-  .ochip:hover{ border-color:var(--accent); }
-  .omut{ color:#6f6690; }
   /* OSINT interactive 3D list */
   .osint-filters{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
   .ofilter{ cursor:pointer; font-size:11px; padding:4px 11px; border-radius:999px; color:#9a92b8;
@@ -265,12 +261,12 @@
   .tile::after{ content:""; position:absolute; inset:0 0 auto 0; height:1px; background:linear-gradient(90deg,transparent,rgba(201,163,255,.35),transparent); }
   .tile .v{ text-shadow:0 2px 6px rgba(120,70,200,.4); }
   /* chips / pills get a pressable bevel */
-  .pill, .ochip, .scope-rules .r, .cop-chips .chip{
+  .pill, .scope-rules .r, .cop-chips .chip{
     background:linear-gradient(180deg,#241a3a,#160f28);
     box-shadow:0 1px 0 var(--edge), inset 0 1px 0 rgba(201,163,255,.14); transition:transform .07s, box-shadow .07s; }
-  .pill:hover, .ochip:hover, .cop-chips .chip:hover{ transform:translateY(-1px);
+  .pill:hover, .cop-chips .chip:hover{ transform:translateY(-1px);
     box-shadow:0 3px 8px -2px rgba(120,70,200,.5), inset 0 1px 0 rgba(201,163,255,.26); }
-  .pill:active, .ochip:active, .cop-chips .chip:active{ transform:translateY(1px); box-shadow:inset 0 2px 5px rgba(0,0,0,.5); }
+  .pill:active, .cop-chips .chip:active{ transform:translateY(1px); box-shadow:inset 0 2px 5px rgba(0,0,0,.5); }
   /* colour swatches as little 3D buttons */
   .sw button{ box-shadow:0 2px 0 rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.35); transition:transform .08s; }
   .sw button:hover{ transform:translateY(-1px); }
@@ -282,6 +278,12 @@
   .subnav button:hover{ color:#cfc6ef; transform:translateY(-1px); box-shadow:0 3px 9px -3px rgba(120,70,200,.5), inset 0 1px 0 rgba(201,163,255,.2); }
   .subnav button.on{ color:var(--accent); background:linear-gradient(180deg,#2a1e45,#1a1230);
     box-shadow:0 2px 0 var(--edge), inset 0 1px 0 var(--rim), inset 0 0 14px rgba(120,70,200,.22); }
+  .osint-catsel{ flex:0 0 auto; min-width:180px; padding:7px 10px; font-size:12.5px; }
+  .osint-mode{ font-size:12px; color:#8a81ad; margin:0 0 12px; min-height:16px; font-family:ui-monospace,monospace; }
+  .osint-mode b{ color:#cfc6ef; } .osint-mode .lnk{ color:#9cdbff; cursor:pointer; margin-left:8px; }
+  .osint-mode .lnk:hover{ text-decoration:underline; }
+  .ocard .ohead{ padding:9px 13px; }
+  .ocard .oname{ font-size:13px; }
 </style>
 </head>
 <body>
@@ -350,11 +352,11 @@
     <div class="view-panel" id="osintview" style="display:none">
       <div class="pwrap">
         <h2>OSINT</h2>
-        <p class="psub">The OSINT Framework directory, ingested. Search the catalog or enter one of your targets (domain / IP / username / email / phone) to get matching resources. Links open the external tool; (R)=registration, (T)=install, (API)=has an API.</p>
+        <p class="psub">Search the ingested OSINT Framework directory, or drop in a target (domain, IP, username, email) for matching resources. Links open the external tool.</p>
         <div class="osint-ctl">
-          <input id="osint-q" placeholder="search the catalog&hellip;" autocomplete="off" spellcheck="false"/>
-          <input id="osint-target" placeholder="&hellip;or a target (caporia.co, 8.8.8.8, user)" autocomplete="off" spellcheck="false"/>
-          <button class="btn sm" id="osint-go">Search</button>
+          <input id="osint-q" placeholder="keyword, or a target \u2014 caporia.co \u00b7 8.8.8.8 \u00b7 user@site" autocomplete="off" spellcheck="false"/>
+          <button class="btn sm" id="osint-go">Go</button>
+          <select class="sel osint-catsel" id="osint-catsel"><option value="">Browse category\u2026</option></select>
         </div>
         <div class="osint-filters" id="osint-filters">
           <span class="ofilter" data-f="free">free</span>
@@ -363,8 +365,8 @@
           <span class="ofilter" data-f="live">live only</span>
           <span class="osint-count" id="osint-count"></span>
         </div>
-        <div id="osint-cats" class="osint-cats"></div>
-        <div id="osint-list"><div class="empty">search, pick a category, or enter a target</div></div>
+        <div class="osint-mode" id="osint-mode"></div>
+        <div id="osint-list"><div class="empty">search a keyword, pick a category, or enter a target</div></div>
       </div>
     </div>
     <div class="view-panel" id="jobsview" style="display:none">
@@ -758,33 +760,52 @@
   // ---- OSINT tab (the ingested OSINT Framework directory) --------------
   var osintCatsLoaded=false, osintFlagsSet={}, osintLastMode=null, osintLastArg='';
   function osintInit(){
-    var q=document.getElementById('osint-q'), tg=document.getElementById('osint-target'),
-        go=document.getElementById('osint-go');
-    if(q && !q._wired){ q._wired=1; q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ osintSearch(); } }); }
-    if(tg && !tg._wired){ tg._wired=1; tg.addEventListener('keydown',function(e){ if(e.key==='Enter'){ osintForTarget(); } }); }
-    if(go && !go._wired){ go._wired=1; go.onclick=function(){ var t=(tg&&tg.value||'').trim(); if(t) osintForTarget(); else osintSearch(); }; }
+    var q=document.getElementById('osint-q'), go=document.getElementById('osint-go'),
+        sel=document.getElementById('osint-catsel');
+    if(q && !q._wired){ q._wired=1; q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ osintSmart(); } }); }
+    if(go && !go._wired){ go._wired=1; go.onclick=osintSmart; }
+    if(sel && !sel._wired){ sel._wired=1; sel.onchange=function(){ if(sel.value) osintCategory(sel.value); }; }
     var fb=document.getElementById('osint-filters');
     if(fb && !fb._wired){ fb._wired=1; var fs=fb.querySelectorAll('.ofilter');
       for(var i=0;i<fs.length;i++){ (function(el){ el.onclick=function(){
         var f=el.getAttribute('data-f'); osintFlagsSet[f]=!osintFlagsSet[f]; el.classList.toggle('on', !!osintFlagsSet[f]);
         osintRerun(); }; })(fs[i]); } }
-    if(!osintCatsLoaded){ fetch('osint/categories',{cache:'no-store'}).then(function(r){return r.json();})
-      .then(function(j){ osintCatsLoaded=true; var box=document.getElementById('osint-cats'); if(!box) return;
-        box.innerHTML=(j.categories||[]).map(function(c){ return '<span class="ochip" data-c="'+escHtml(c.name)+'">'+escHtml(c.name)+' <span class="omut">'+c.count+'</span></span>'; }).join('');
-        var cs=box.querySelectorAll('.ochip'); for(var i=0;i<cs.length;i++){ (function(el){ el.onclick=function(){ osintCategory(el.getAttribute('data-c')); }; })(cs[i]); }
+    if(!osintCatsLoaded && sel){ fetch('osint/categories',{cache:'no-store'}).then(function(r){return r.json();})
+      .then(function(j){ osintCatsLoaded=true;
+        sel.innerHTML='<option value="">Browse category\u2026</option>'+(j.categories||[]).map(function(c){
+          return '<option value="'+escHtml(c.name)+'">'+escHtml(c.name)+' ('+c.count+')</option>'; }).join('');
       }).catch(function(){}); }
   }
+  // one smart box: a value that looks like a target -> /osint/for, else keyword search.
+  function osintIsTarget(v){
+    if(/\s/.test(v)) return false;                     // keywords have spaces; targets don't
+    if(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return true;   // email
+    if(/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v)) return true;  // IPv4 / CIDR
+    if(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9-]+)+$/i.test(v)) return true;  // domain
+    return false;
+  }
+  function osintSmart(){ var v=(document.getElementById('osint-q').value||'').trim();
+    if(!v){ osintMode(''); return; }
+    var sel=document.getElementById('osint-catsel'); if(sel) sel.value='';
+    if(osintIsTarget(v)) osintForTarget(v); else osintSearch(v); }
+  function osintMode(html){ var m=document.getElementById('osint-mode'); if(m) m.innerHTML=html||''; }
   function osintFlags(){ var p=[]; for(var f in osintFlagsSet){ if(osintFlagsSet[f]) p.push(f+'=1'); } return p.join('&'); }
-  function osintSearch(){ var q=(document.getElementById('osint-q').value||'').trim();
-    osintLastMode='search'; osintLastArg=q; osintFetch('osint/search?q='+encodeURIComponent(q)+'&'+osintFlags()); }
+  function osintSearch(q){ q=(q!=null?q:(document.getElementById('osint-q').value||'')).trim();
+    osintLastMode='search'; osintLastArg=q;
+    osintMode('catalog matches for <b>'+escHtml(q||'everything')+'</b>'
+      +(q&&!osintIsTarget(q)?'<span class="lnk" data-as="target">look up as a target instead</span>':''));
+    osintFetch('osint/search?q='+encodeURIComponent(q)+'&'+osintFlags()); }
   function osintCategory(cat){ osintLastMode='cat'; osintLastArg=cat;
+    osintMode('category <b>'+escHtml(cat)+'</b>');
     osintFetch('osint/search?category='+encodeURIComponent(cat)+'&'+osintFlags()); }
-  function osintForTarget(){ var t=(document.getElementById('osint-target').value||'').trim(); if(!t) return;
-    osintLastMode='target'; osintLastArg=t; osintFetch('osint/for?target='+encodeURIComponent(t)); }
-  function osintRerun(){ // re-apply filters to the current view (target view is unfiltered server-side)
-    if(osintLastMode==='search'){ osintFetch('osint/search?q='+encodeURIComponent(osintLastArg)+'&'+osintFlags()); }
-    else if(osintLastMode==='cat'){ osintFetch('osint/search?category='+encodeURIComponent(osintLastArg)+'&'+osintFlags()); }
-    else if(osintLastMode==='target'){ osintForTarget(); } }
+  function osintForTarget(t){ t=(t!=null?t:(document.getElementById('osint-q').value||'')).trim(); if(!t) return;
+    osintLastMode='target'; osintLastArg=t;
+    osintMode('resources for target <b>'+escHtml(t)+'</b><span class="lnk" data-as="search">search as a keyword instead</span>');
+    osintFetch('osint/for?target='+encodeURIComponent(t)); }
+  function osintRerun(){
+    if(osintLastMode==='search') osintSearch(osintLastArg);
+    else if(osintLastMode==='cat') osintCategory(osintLastArg);
+    else if(osintLastMode==='target') osintForTarget(osintLastArg); }
   function osintFetch(url){ var box=document.getElementById('osint-list'); if(box) box.innerHTML='<div class="empty">loading&hellip;</div>';
     fetch(url,{cache:'no-store'}).then(function(r){return r.json();}).then(osintRender)
       .catch(function(){ if(box) box.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
@@ -803,7 +824,6 @@
       row('category', cat); if(t.markers) row('markers', t.markers);
       var badges=[osintBadge(t.opsec||'opsec?', op)];
       if(t.api) badges.push(osintBadge('API','#4db5ff'));
-      if(t.free) badges.push(osintBadge('free','#36d399'));
       if(t.registration) badges.push(osintBadge('registration','#f2b84b'));
       if(t.localInstall) badges.push(osintBadge('install','#b98bff'));
       var href=escHtml(t.url||'');
@@ -826,6 +846,11 @@
         var o=cp.textContent; cp.textContent='copied'; setTimeout(function(){ cp.textContent=o; },1100); };
     })(cards[i]); }
   }
+  // interpretation-override links in the mode note
+  document.addEventListener('click', function(e){ var el=e.target;
+    if(el && el.classList && el.classList.contains('lnk')){
+      var as=el.getAttribute('data-as'); var v=(document.getElementById('osint-q').value||'').trim(); if(!v) return;
+      if(as==='target') osintForTarget(v); else if(as==='search') osintSearch(v); } });
 
   // ---- Pivots tab (active port-forwards) -------------------------------
   function loadPivots(){ fetch('pivots',{cache:'no-store'}).then(function(r){return r.json();}).then(renderPivots)
