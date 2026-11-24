@@ -1330,8 +1330,12 @@
     .catch(function(){ var b=document.getElementById('pivots-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
   function renderPivots(d){ var box=document.getElementById('pivots-list'); if(!box) return;
     var ps=(d.pivots||[]);
-    if(!ps.length){ box.innerHTML='<div class="empty">no active pivots - open one via POST /pivots (scope-gated on the downstream)</div>'; return; }
-    box.innerHTML='<table class="jtbl"><thead><tr><th>#</th><th>local</th><th></th><th>downstream</th><th>via</th><th>conns</th><th></th></tr></thead><tbody>'
+    var dialer=d.dialer||'direct', pivoted=(dialer!=='direct');
+    var sp='<div style="margin-bottom:12px;font-size:12.5px">scan path: <span class="jbadge" style="color:'
+      +(pivoted?'#ff9d2e':'#5dffa5')+';border-color:'+(pivoted?'#ff9d2e':'#5dffa5')+'">'+escHtml(dialer)+'</span>'
+      +(pivoted?' <span class="jmut">module scans route through this pivot</span>':' <span class="jmut">modules dial downstreams directly</span>')+'</div>';
+    if(!ps.length){ box.innerHTML=sp+'<div class="empty">no active pivots - open one via POST /pivots (scope-gated on the downstream)</div>'; return; }
+    box.innerHTML=sp+'<table class="jtbl"><thead><tr><th>#</th><th>local</th><th></th><th>downstream</th><th>via</th><th>conns</th><th></th></tr></thead><tbody>'
       +ps.map(function(p){
         var hops=(p.hops||[]);
         var down=hops.length

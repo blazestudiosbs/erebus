@@ -1,6 +1,7 @@
 """The Framework object: wires datastore, event bus, loader, scope, and the job runner."""
 from __future__ import annotations
 
+import socket
 import threading
 from typing import Any
 
@@ -11,6 +12,7 @@ from erebus.reporting.evidence import EvidenceStore
 
 from . import events as ev
 from .datastore import Store
+from .dial import Dialer, DirectDialer
 from .events import Event, EventBus
 from .loader import Loader
 from .module_base import Module
@@ -49,6 +51,8 @@ class Framework:
         self.loader = Loader()
         self.scope = Scope()
         self.pivots = PivotManager(self.scope, self.events)
+        # how modules open connections; swap to a SessionDialer to scan through a pivot
+        self.dialer: Dialer = DirectDialer()
         # session journals: opt-in, and never in the Live edition (which keeps no logs)
         self.sessions = SessionManager(
             self.store, self.events,
@@ -72,6 +76,15 @@ class Framework:
             self.activity_log = ActivityLog(log_path)
             self.activity_log.attach(self.events)
         self.loader.discover()
+
+    # --- connections -------------------------------------------------------
+    def dial(self, host: str, port: int, timeout: float = 3.0) -> socket.socket:
+        """Open a TCP connection to ``host:port`` through the active dialer.
+
+        Default is a direct connection; set ``self.dialer`` to a ``SessionDialer``
+        to route module connections through a pivot. Modules reach this via
+        ``self.dial(...)`` so a scan can follow the configured path."""
+        return self.dialer.dial(host, port, timeout)
 
     # --- engagement lifecycle (operations) ---------------------------------
     def op_new(self, name: str, codename: str = "") -> int:

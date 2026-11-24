@@ -6,7 +6,6 @@ Copy this module's shape when writing new ones: metadata, typed options,
 from __future__ import annotations
 
 import ipaddress
-import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from erebus.core import events as ev
@@ -54,7 +53,7 @@ class PortScan(Auxiliary):
 
     def _probe(self, host: str, port: int, timeout: float) -> tuple[int, str] | None:
         try:
-            with socket.create_connection((host, port), timeout=timeout) as s:
+            with self.dial(host, port, timeout) as s:   # pivot-aware (direct by default)
                 banner = ""
                 try:
                     s.settimeout(0.5)
@@ -72,7 +71,9 @@ class PortScan(Auxiliary):
         timeout = float(self.opt("TIMEOUT"))  # type: ignore[arg-type]
         total = len(hosts) * len(ports)
         done = 0
-        self.info_(f"scanning {len(hosts)} host(s) x {len(ports)} port(s)")
+        via = getattr(self.framework.dialer, "name", "direct")
+        route = "" if via == "direct" else f" via {via}"
+        self.info_(f"scanning {len(hosts)} host(s) x {len(ports)} port(s){route}")
         for host in hosts:
             self.add_target(host, "scanning")
             opened = 0
