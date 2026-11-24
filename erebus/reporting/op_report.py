@@ -3,9 +3,10 @@
 Takes the bundle produced by :mod:`erebus.reporting.archive` (an operation's
 record plus its findings, jobs, sessions, evidence, redacted credentials,
 logged artifacts and notes) — typically after unsealing an encrypted archive —
-and renders a Markdown or self-contained HTML report scoped to that one
-operation. Stdlib only; it reuses the engagement report's helpers so the two
-stay visually consistent.
+and renders a Markdown, self-contained HTML, or PDF report scoped to that one
+operation. Markdown/HTML are stdlib only; PDF reuses the optional ``fpdf2``
+dependency. All reuse the engagement report's helpers so the two stay visually
+consistent.
 
 Credential **secret values are never present in an archive** (redacted to
 ``"set"``), so they are never in a report either.
@@ -304,3 +305,152 @@ def render_html(bundle: dict[str, Any], theme: str = "dark") -> str:
 
     out.append("</main></body></html>\n")
     return "\n".join(out)
+
+
+# -------------------------------------------------------------------------- PDF
+
+def render_pdf(bundle: dict[str, Any]) -> bytes:
+    """Render the per-operation report as PDF bytes. Requires ``fpdf2``."""
+    try:
+        from fpdf import FPDF
+        from fpdf.enums import XPos, YPos
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(rpt._PDF_HINT) from exc
+
+    op = _op(bundle)
+    findings = _findings(bundle)
+    sev = _sev_counts(findings)
+    creds = bundle.get("credentials", [])
+    arts = bundle.get("artifacts", [])
+    sessions = bundle.get("sessions", [])
+    evidence = bundle.get("evidence", [])
+    jobs = bundle.get("jobs", [])
+    techniques = _techniques(bundle)
+    S = rpt._pdf_safe
+
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_title(S(_title(bundle)))
+    pdf.add_page()
+
+    def heading(text: str) -> None:
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, S(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    def para(text: str, muted: bool = False) -> None:
+        g = 110 if muted else 0
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(g, g, g)
+        pdf.multi_cell(0, 5, S(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_text_color(0, 0, 0)
+
+    def table(headers: list[str], rows: list[list[object]]) -> None:
+        pdf.set_font("Helvetica", "", 8)
+        with pdf.table() as t:
+            r = t.row()
+            for hcell in headers:
+                r.cell(S(hcell))
+            for row in rows:
+                r = t.row()
+                for cell in row:
+                    r.cell(S(cell))
+
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.cell(0, 10, S(_title(bundle)), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(110, 110, 110)
+    pdf.cell(0, 6, S("Generated " + rpt._when(bundle.get("generated"))
+                     + " - from the operation's archived logbook"),
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_text_color(0, 0, 0)
+
+    heading("Operation")
+    table(["Field", "Value"], [
+        ["ID", op.get("id", "")], ["Name", op.get("name", "")],
+        ["Codename", op.get("codename", "")], ["Status", op.get("status", "")],
+        ["Started", rpt._when(op.get("started"))], ["Ended", rpt._when(op.get("ended"))],
+        ["Duration", _duration(op)],
+    ])
+    scope = _scope(op)
+    para("Scope snapshot at open: " + (", ".join(scope) if scope else "(empty - deny-all)"),
+         muted=True)
+
+    heading("Summary")
+    table(["Item", "Count"], [
+        *[[f"Findings: {s}", sev[s]] for s in rpt.SEVERITIES],
+        ["Sessions", len(sessions)], ["Credentials", len(creds)],
+        ["Evidence items", len(evidence)], ["Module runs", len(jobs)],
+        ["Logged artifacts", len(arts)],
+    ])
+
+    heading("Findings")
+    if findings:
+        table(["Severity", "Host", "Title", "CVE", "CVSS", "KEV", "EPSS", "ATT&CK"],
+              [[f.get("severity"), f.get("host"), f.get("title"), f.get("cve"),
+                rpt._cvss(f.get("cvss")), "yes" if f.get("kev") else "",
+                rpt._epss(f.get("epss")), f.get("attack")] for f in findings])
+    else:
+        para("No findings recorded for this operation.", muted=True)
+
+    heading("Sessions")
+    if sessions:
+        table(["ID", "Host", "Type", "Transport", "Opened", "Closed"],
+              [[s.get("id"), s.get("host"), s.get("type"), s.get("transport"),
+                rpt._when(s.get("opened")), rpt._when(s.get("closed"))] for s in sessions])
+    else:
+        para("No sessions.", muted=True)
+
+    heading("Credentials")
+    para("Discovered accounts (username only - secret values are never archived).",
+         muted=True)
+    if creds:
+        table(["Host", "Port", "Service", "Username", "Kind", "Source"],
+              [[c.get("host"), c.get("port"), c.get("service"), c.get("username"),
+                c.get("kind"), c.get("source")] for c in creds])
+    else:
+        para("No credentials recorded.", muted=True)
+
+    heading("Evidence")
+    if evidence:
+        table(["Reference", "Host", "Kind", "Name", "Size"],
+              [[e.get("ref"), e.get("host"), e.get("kind"), e.get("name"), e.get("size")]
+               for e in evidence])
+    else:
+        para("No evidence recorded.", muted=True)
+
+    heading("ATT&CK coverage")
+    if techniques:
+        table(["Tactic", "Technique", "Count"],
+              [[tactic, tech, n]
+               for tactic, techs in group_by_tactic(techniques) for tech, n in techs])
+    else:
+        para("No ATT&CK techniques recorded.", muted=True)
+
+    heading("Teardown artifacts")
+    para("Things the operation created that an operator reverts by hand "
+         "(Erebus never touches a target to revert them).", muted=True)
+    if arts:
+        table(["Kind", "Description", "Revert hint", "Reverted"],
+              [[a.get("kind"), a.get("descr"), a.get("revert_hint"),
+                "yes" if a.get("reverted") else "no"] for a in arts])
+    else:
+        para("No artifacts logged.", muted=True)
+
+    heading("Notes")
+    notes = str(bundle.get("notes") or "").strip()
+    if notes:
+        pdf.set_font("Courier", "", 8)
+        pdf.multi_cell(0, 4, S(notes), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    else:
+        para("No notes.", muted=True)
+
+    heading("Reproduction steps")
+    steps = _steps(bundle)
+    if steps:
+        pdf.set_font("Courier", "", 8)
+        pdf.multi_cell(0, 4, S(rpt._steps_text(steps)), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    else:
+        para("No module runs recorded.", muted=True)
+
+    return bytes(pdf.output())

@@ -1083,9 +1083,13 @@
         act.innerHTML='<button class="btn sm" id="ops-end">End op</button>'
           +'<button class="btn sm" id="ops-tdprev">Preview teardown</button>'
           +'<button class="btn sm" id="ops-td">Run teardown</button>'
-          +'<button class="btn sm" id="ops-arch">Archive&hellip;</button>';
+          +'<button class="btn sm" id="ops-arch">Archive&hellip;</button>'
+          +'<button class="btn sm" id="ops-rep">Report</button>'
+          +'<button class="btn sm" id="ops-rep-pdf">PDF</button>';
         opsWire('ops-end',opsEnd); opsWire('ops-tdprev',opsTeardownPreview);
         opsWire('ops-td',opsTeardownRun); opsWire('ops-arch',opsArchive);
+        opsWire('ops-rep',function(){ opsReport('html',true); });
+        opsWire('ops-rep-pdf',function(){ opsReport('pdf',false); });
       } else { act.innerHTML=''; var td=document.getElementById('ops-teardown'); if(td) td.innerHTML='<div class="empty">&mdash;</div>'; }
     }
     var list=document.getElementById('ops-list');
@@ -1129,6 +1133,19 @@
         opsNote('teardown: closed '+((r.closed_sessions||[]).length)+' session(s), '+((r.closed_forwards||[]).length)+' forward(s)'+(pend?('; '+pend+' artifact(s) need manual reversal'):''),'#5dffa5');
         opsTeardownPreview(); opsLoad(); }
       else opsNote('failed: '+((res.j&&res.j.detail)||res.status),'#ff6a6a'); });
+  }
+  function opsReport(fmt, open){
+    if(!hasTok()){ opsNote('connect to a live server first','#ff9d2e'); return; }
+    opsNote('generating '+fmt.toUpperCase()+' report…','#22e0ff');
+    fetch('operations/report?format='+fmt,{headers:{'Authorization':'Bearer '+window.EREBUS_TOKEN}})
+      .then(function(r){ if(!r.ok) return r.json().then(function(j){ throw new Error((j&&j.detail)||r.status); });
+        return r.blob(); })
+      .then(function(blob){ var url=URL.createObjectURL(blob);
+        if(open){ window.open(url,'_blank'); opsNote('opened HTML report in a new tab','#5dffa5'); }
+        else { var a=document.createElement('a'); a.href=url; a.download='erebus-op-report.'+fmt;
+          document.body.appendChild(a); a.click(); a.remove(); opsNote(fmt.toUpperCase()+' report downloaded','#5dffa5'); }
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 10000); })
+      .catch(function(e){ opsNote('report failed: '+e.message,'#ff6a6a'); });
   }
   function opsArchive(){
     if(!hasTok()){ opsNote('connect to a live server first','#ff9d2e'); return; }
