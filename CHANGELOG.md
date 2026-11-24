@@ -8,6 +8,9 @@ this project uses [Semantic Versioning](https://semver.org).
 - OSINT Framework directory ingested (`erebus/osint/`, vendored MIT `arf.json`,
   1,171 tools / 33 categories) with an `erebus osint` CLI (categories/search/list,
   `--free/--api/--passive/--live`).
+- OSINT target-aware + surfaces: `catalog.for_target()` (detects domain/ip/
+  username/email/phone/name), RPC `/osint/{categories,search,for}`, a dashboard
+  **OSINT tab**, and copilot OSINT-resource awareness.
 
 ## [0.2.0] — 2026-11-23
 ### Added

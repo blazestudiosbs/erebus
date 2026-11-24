@@ -6,7 +6,9 @@ flag filters. Pure and offline — no network here.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -151,3 +153,54 @@ class Catalog:
         if live is not None:
             out = [t for t in out if t.live == live]
         return out
+
+    def for_target(self, value: str) -> list[Tool]:
+        """Resources whose input type matches *value* (auto-detected), best first.
+
+        Ordered passive+free+live first so the safest/usable tools lead. Returns
+        [] for an unrecognised value.
+        """
+        kind = detect_target_type(value)
+        keywords = _INPUT_KEYWORDS.get(kind, ())
+        if not keywords:
+            return []
+        matched = [t for t in self._tools
+                   if any(k in t.input.lower() for k in keywords)]
+        matched.sort(key=lambda t: (not (t.passive and t.free and t.live),
+                                    not t.live, not t.free, t.name.lower()))
+        return matched
+
+
+# target value -> canonical kind -> arf `input` keywords to match
+_INPUT_KEYWORDS = {
+    "ip": ("ip",),
+    "domain": ("domain",),
+    "email": ("email",),
+    "username": ("username",),
+    "phone": ("phone",),
+    "name": ("name",),
+}
+
+_DOMAIN_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9](-?[a-z0-9]+)*\.)+[a-z]{2,}$", re.IGNORECASE)
+
+
+def detect_target_type(value: str) -> str:
+    """Classify a target string: ip | email | domain | phone | name | username."""
+    v = (value or "").strip()
+    if not v:
+        return "unknown"
+    if "@" in v and _DOMAIN_RE.match(v.split("@", 1)[1] or ""):
+        return "email"
+    try:
+        ipaddress.ip_address(v)
+        return "ip"
+    except ValueError:
+        pass
+    digits = re.sub(r"[\s()+\-.]", "", v)
+    if digits.isdigit() and 7 <= len(digits) <= 15:
+        return "phone"
+    if _DOMAIN_RE.match(v):
+        return "domain"
+    if " " in v:
+        return "name"
+    return "username"

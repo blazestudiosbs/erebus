@@ -386,3 +386,15 @@ def test_session_verb_requires_token():
     fw = _seed()
     with _client(fw) as c:
         assert c.post("/sessions/1/verb", json={"verb": "whoami"}).status_code == 401
+
+
+def test_osint_endpoints():
+    fw = _seed()
+    with _client(fw) as c:
+        cats = c.get("/osint/categories").json()["categories"]
+        assert any(x["name"] == "Username" for x in cats)
+        res = c.get("/osint/search", params={"q": "crt.sh"}).json()
+        assert res["total"] >= 1 and res["tools"]
+        forr = c.get("/osint/for", params={"target": "caporia.co"}).json()
+        assert forr["kind"] == "domain" and forr["total"] >= 1
+        assert c.get("/osint/for", params={"target": ""}).status_code == 400
