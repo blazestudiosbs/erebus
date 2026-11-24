@@ -58,7 +58,7 @@ def test_audit_headers_case_insensitive():
 
 
 def test_http_headers_module_run_with_fake_fetch(monkeypatch):
-    def fake_one(host, port, scheme, path, timeout):
+    def fake_one(host, port, scheme, path, timeout, dial=None):
         return 200, _WEAK, b"<title>x</title>"
     monkeypatch.setattr(hh, "_one", fake_one)
     fw = Framework()

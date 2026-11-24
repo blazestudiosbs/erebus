@@ -5,6 +5,12 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Pivot-aware web recon**: the web scanners now follow the active pivot too. `_one`
+  (and `probe`) in `scanner/http_probe` take an optional dialer and open their TCP socket
+  through it — wrapping it in TLS for https — so `scanner/http_probe` and
+  `scanner/http_headers` route every request through `self.dial()` and reach web services
+  only a pivot host can see. Both label the path they took (`… via session:N`); with the
+  default direct dialer their behaviour is unchanged. Scope still gates RHOSTS.
 - **Pivot-aware scanning**: modules now open their TCP connections through a framework
   **dialer**, so a scan can be routed over a controlled pivot and reach a downstream only
   the pivot host can see. `core/dial.py` adds `DirectDialer` (the default — dials from the
