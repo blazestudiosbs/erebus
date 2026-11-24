@@ -5,6 +5,13 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Operation filter extended to the Homefield graph**: the shared operation dropdown
+  now also scopes the Homefield knowledge graph. `build_graph(store, op_id=…)` restricts
+  the estate to the hosts an operation touched (its op-tagged findings/credentials/
+  sessions), the services on those hosts and the accounts its own credentials found;
+  `GET /homefield?op=<id>` serves the scoped graph, and the Homefield tab refetches
+  through the same global filter as the data tabs. Blast-radius stays cross-op (reuse
+  across engagements is the signal). The whole estate is still the default.
 - **Operation-aware dashboard filtering**: a shared **operation** dropdown on the
   Findings, Jobs, Sessions and Credentials tabs narrows each to a single engagement,
   using the `op_id` those records already carry. The selection is global — it persists

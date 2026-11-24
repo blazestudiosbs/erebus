@@ -671,7 +671,7 @@
     else if(name==='Guide'){ wikiInit(); }
     else if(name==='Findings'){ opfInject('findingsview',loadFindings); loadFindings(); pollTimer=setInterval(loadFindings,4000); }
     else if(name==='OSINT'){ osintInit(); }
-    else if(name==='Homefield'){ hfInit(); }
+    else if(name==='Homefield'){ opfInject('homefieldview',hfInit); hfInit(); }
     else if(name==='Jobs'){ opfInject('jobsview',loadJobs); loadJobs(); pollTimer=setInterval(loadJobs,3000); }
     else if(name==='Sessions'){ opfInject('sessionsview',loadSessions); loadSessions(); pollTimer=setInterval(loadSessions,4000); }
     else if(name==='Pivots'){ loadPivots(); pollTimer=setInterval(loadPivots,3000); }
@@ -1010,7 +1010,7 @@
     if(go && !go._wired){ go._wired=1; go.onclick=hfBlast; }
     if(h && !h._wired){ h._wired=1; h.addEventListener('keydown',function(e){ if(e.key==='Enter'){ hfBlast(); } }); }
     if(!hasTok()){ var t=document.getElementById('hf-tiles'); if(t) t.innerHTML='<div class="empty">connect to a live server first</div>'; return; }
-    fetch('homefield',{headers:authH(),cache:'no-store'}).then(function(r){return r.json();}).then(hfRender)
+    fetch('homefield'+(OPF?('?op='+encodeURIComponent(OPF)):''),{headers:authH(),cache:'no-store'}).then(function(r){return r.json();}).then(hfRender)
       .catch(function(){ var t=document.getElementById('hf-tiles'); if(t) t.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
   function hfTile(k,v,color){ return '<div class="tile"><div class="k">'+escHtml(k)+'</div><div class="v"'+(color?(' style="color:'+color+'"'):'')+'>'+v+'</div></div>'; }
   function hfRender(g){ var st=g.stats||{}, tiles=document.getElementById('hf-tiles');

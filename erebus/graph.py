@@ -25,10 +25,35 @@ def _acct_id(username: str) -> str:
     return f"acct:{username}"
 
 
-def build_graph(store: Any) -> dict:
-    """Return {nodes, edges, stats} for the current engagement."""
+def _op_hosts(store: Any, op_id: int) -> set:
+    """Hosts an operation touched: those on its op-tagged findings, credentials and
+    sessions (targets/services carry no op_id, so the op's footprint is derived)."""
+    hosts: set = set()
+    for getter in (store.findings, store.credentials, store.sessions):
+        for row in getter():
+            r = dict(row)
+            if r.get("op_id") == op_id and r.get("host"):
+                hosts.add(str(r["host"]))
+    return hosts
+
+
+def build_graph(store: Any, op_id: int | None = None) -> dict:
+    """Return {nodes, edges, stats} for the estate.
+
+    When ``op_id`` is given, the graph is scoped to that operation: only the hosts
+    it touched (its op-tagged findings/credentials/sessions), the services on those
+    hosts, and the accounts its own credentials discovered. ``op_id`` None (the
+    default) is the whole estate, unchanged.
+    """
     nodes: dict = {}
     edges: list = []
+    op_hosts = _op_hosts(store, op_id) if op_id is not None else None
+
+    def host_ok(host: str) -> bool:
+        return op_hosts is None or host in op_hosts
+
+    def match_op(r: dict) -> bool:
+        return op_id is None or r.get("op_id") == op_id
 
     def node(nid: str, kind: str, label: str, **extra: Any) -> None:
         if nid not in nodes:
@@ -38,14 +63,14 @@ def build_graph(store: Any) -> dict:
     for row in store.hosts():
         r = dict(row)
         host = str(r.get("host") or "")
-        if host:
+        if host and host_ok(host):
             node(_host_id(host), "host", host, status=str(r.get("status") or ""))
 
     # services -> exposes edge
     for row in store.services():
         r = dict(row)
         host = str(r.get("host") or "")
-        if not host:
+        if not host or not host_ok(host):
             continue
         port = r.get("port")
         proto = str(r.get("proto") or "tcp")
@@ -63,7 +88,7 @@ def build_graph(store: Any) -> dict:
         r = dict(row)
         host = str(r.get("host") or "")
         user = str(r.get("username") or "")
-        if not host or not user:
+        if not host or not user or not match_op(r) or not host_ok(host):
             continue
         aid = _acct_id(user)
         node(aid, "account", user)
@@ -76,7 +101,7 @@ def build_graph(store: Any) -> dict:
     for row in store.sessions():
         r = dict(row)
         host = str(r.get("host") or "")
-        if host and not r.get("closed"):
+        if host and not r.get("closed") and match_op(r):
             n = nodes.get(_host_id(host))
             if n is not None:
                 n["session"] = True
