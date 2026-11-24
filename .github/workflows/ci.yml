@@ -13,7 +13,10 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned to 22.04: ubuntu-latest rolled to 26.04, whose setup-python
+    # manifest no longer ships Python 3.9, breaking the 3.9 leg at setup.
+    # 22.04 provides the whole 3.9–3.13 range.
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
