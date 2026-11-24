@@ -866,7 +866,9 @@
       else { var d=(res.j&&res.j.detail)||('HTTP '+res.status); var hint='';
         if(res.status===503){ hint='  Add a key, or switch provider with the gear.'; }
         else if(cfg.provider==='ollama'){
-          if(/not found|returned HTTP|no such model/i.test(d)){ hint='  The server answered but rejected it - check the Model name (hit Test connection to list what it has).'; }
+          if(/405|not allowed|method not allowed/i.test(d)){ hint='  That URL is not an OpenAI-compatible chat endpoint (405). Point the URL at your raw Ollama (e.g. http://msi:11434), not an Open WebUI / nginx proxy like :3000.'; }
+          else if(/model|not found|no such/i.test(d)){ hint='  The server answered but rejected the model - hit Test connection and pick a model it lists.'; }
+          else if(/returned HTTP/i.test(d)){ hint='  The server answered with an error - check the URL points at the raw Ollama API and the model exists (Test connection).'; }
           else { hint='  Could not reach '+cfg.url+' - is Ollama running and reachable from the server?'; } }
         copTx[at]={role:'err', text:d+hint}; }
       copRender();
