@@ -183,14 +183,30 @@ PAGES: list = [
         "durable model of the estate for both attackers and defenders.",
         [
             _s("Model the estate",
-               "Nodes are computers, accounts, and services; edges are the "
-               "relationships and reachability between them. Querying the graph answers "
-               "'what can this account reach?' and 'what is near this compromised host?'",
-               "Erebus already models hosts/services/findings relationally; a graph "
-               "view (e.g. Neo4j-style) is a natural future extension of the Flow tab."),
+               "Nodes are computers, accounts, groups and services; edges are the "
+               "relationships between them - who administers a host, who logs into it, "
+               "who belongs to which group. Modelling this answers questions a flat list "
+               "cannot: what can this account reach, and what sits next to this host?",
+               "Erebus already models hosts/services/findings relationally; a graph view "
+               "(Neo4j-style) is a natural future extension of the Flow tab."),
+            _s("Admin vs use, and blast radius",
+               "Who can administer a machine matters as much as who uses it: anyone who "
+               "can administer a host can usually impersonate everyone who logs into it. "
+               "Trace those edges and a single shared workstation or reused local-admin "
+               "password turns into a path to far more than it looks.",
+               "Discovered credentials and their reuse are what Erebus surfaces on the "
+               "Credentials tab - the human-readable half of this blast-radius picture."),
+            _s("Don't stop at the perimeter",
+               "The highest-value assets increasingly live in cloud accounts (AWS/Azure/"
+               "GCP) and SaaS, not on-prem. A graph that ends at the corporate network "
+               "misses the real objective; fold cloud identities and reachable services "
+               "in. Feed it from scans, directory data and cloud inventories.",
+               "Importers and scanners feed Erebus's host/service model; OSINT and DNS "
+               "add external footprint."),
         ],
         ["A graph answers reachability and blast-radius questions.",
-         "It outlives any single operation as a model of the estate."]),
+         "Model who can administer a host, not just who uses it.",
+         "Include cloud and SaaS - that is where the crown jewels are."]),
     _page(
         "modes-and-ethics", "Operating modes & ethics", "Ch. 1-2",
         "How you operate - quiet and targeted vs broad and noisy - and the ethical "
@@ -211,6 +227,148 @@ PAGES: list = [
         ],
         ["Pick the mode that fits the objective.",
          "Secrets and private data you encounter are a responsibility, not a trophy."]),
+    _page(
+        "progressive-ops", "Progressive operations", "Ch. 4",
+        "Once the basics are covered, a mature program invents new operations that "
+        "mirror threats the organization is not yet looking for.",
+        [
+            _s("Beyond the domain controller",
+               "Keep covering the staples (network and AD compromise), but push into "
+               "scenarios adversaries actually run and defenders rarely test: emulating "
+               "cryptojacking to measure persistence and real cost, privacy / "
+               "'motivated-intruder' testing to see how easily insider or combined "
+               "anonymized data exposes people, telemetry and data manipulation, and "
+               "emulating a specific named adversary's techniques.",
+               "Erebus is find-and-triage research: use these as operation ideas and "
+               "objectives, not as a reason to generate exploits - the research bench "
+               "and scaffolder never emit exploit/payload code."),
+            _s("Test with dummy data, and use tabletops",
+               "Exfiltrate purpose-made 'sentinel' dummy records rather than real "
+               "customer data to prove a path safely. When an operation is too risky, "
+               "costly or legally off-limits to run for real, walk it through on paper "
+               "as a tabletop - it still surfaces the gaps.",
+               "Scope and authorization still gate everything; the dummy-data-first "
+               "rule is the safe default."),
+        ],
+        ["Cover the basics, then invent operations defenders aren't ready for.",
+         "Prove impact with sentinel dummy data, never real records.",
+         "Tabletop the scenarios you can't safely run live."]),
+    _page(
+        "cred-stores-and-memory", "Credential stores, memory & cookies", "Ch. 8",
+        "The second half of credential hunting: live secrets in process memory, "
+        "session cookies, OS credential vaults, and tricking users for the rest.",
+        [
+            _s("Cookies can beat passwords",
+               "A stolen session cookie often grants access that even multi-factor auth "
+               "won't stop, because it is issued after the MFA step ('pass the cookie'). "
+               "Treat cookies and tokens as first-class loot alongside passwords.",
+               ""),
+            _s("Memory, vaults and logs",
+               "Secrets that never touch disk still live in process memory (browsers, "
+               "mail clients, auth services) and in OS credential vaults (Windows "
+               "Credential Manager, macOS Keychain). They also leak into command-line "
+               "arguments, shell history, and verbose logs and traces.",
+               "Erebus's post/*_creds modules parse the on-disk stores; discovered "
+               "secret values are stored locally but redacted to 'set' over the API."),
+            _s("Tricking the user",
+               "When a secret can't be found, adversaries ask for it: a spoofed "
+               "credential prompt, a phishing page, or a password-spray against known "
+               "accounts. Every organization should spray its own accounts periodically "
+               "to find weak and reused passwords first.",
+               ""),
+        ],
+        ["Steal cookies/tokens, not just passwords - they can bypass MFA.",
+         "Live secrets hide in memory, OS vaults, history and logs.",
+         "Spray your own accounts regularly to beat attackers to weak passwords."]),
+    _page(
+        "automation", "Automation & living-off-the-land", "Ch. 9",
+        "Adversaries prefer the tools already on the host - built-in automation and "
+        "browsers - because that traffic blends in and needs nothing installed.",
+        [
+            _s("Built-in automation blends in",
+               "On Windows, built-in automation (COM) can drive Office and the shell to "
+               "send mail, search documents for secrets, or exfiltrate data as ordinary-"
+               "looking activity. Browsers can be driven headless or via their remote-"
+               "debugging interface to reuse a victim's logged-in sessions - no cookie "
+               "theft required.",
+               "Erebus never does this to third parties and never generates such code; "
+               "it is here as recon/defender knowledge, and the copilot stays advisory."),
+            _s("Why it matters for defence",
+               "Because these use trusted, signed, built-in tools, they fly under many "
+               "detections. Knowing the techniques tells the blue team what to log - "
+               "script-block logging, child processes of Office, unexpected browser "
+               "debug ports - so real abuse gets caught.",
+               ""),
+        ],
+        ["Attackers reuse built-in automation and browsers to blend in.",
+         "This is defender knowledge - Erebus doesn't automate other people's apps.",
+         "Knowing the techniques is what lets the blue team detect them."]),
+    _page(
+        "protecting-the-operator", "Protecting the operator", "Ch. 10",
+        "A pen tester's own machine is a prime target - it concentrates credentials, "
+        "findings and tooling. Lock it down and watch it.",
+        [
+            _s("Shrink the attack surface",
+               "Assume the network is hostile. Deny inbound by default and open only "
+               "what's needed, harden SSH (no root login, keys not passwords, a non-"
+               "default port), encrypt disks, and know exactly who can administer the "
+               "box - an extra admin can impersonate you. Port-scan your own machine to "
+               "confirm the config.",
+               "Erebus keeps secrets in the vault and redacts credential values over the "
+               "API, so the dashboard never concentrates plaintext loot in the browser."),
+            _s("Keep evidence, and watch for logins",
+               "Timestamped shell prompts and session logs make screenshots self-"
+               "documenting and protect you in a dispute. Alert on logins and failed "
+               "login attempts so you know the moment someone else tries your box.",
+               "The attack plan / Notes and the Jobs history are where Erebus keeps the "
+               "engagement record; erebus doctor flags readiness gaps before you start."),
+        ],
+        ["Your own machine is a target - deny inbound, harden SSH, encrypt disks.",
+         "Be the only admin; an extra admin can impersonate you.",
+         "Timestamp everything and alert on logins for evidence and early warning."]),
+    _page(
+        "traps-and-deception", "Traps & deception", "Ch. 11",
+        "Decoys turn a defender's home turf into a tripwire: fake secrets that do "
+        "nothing but sound an alarm when touched.",
+        [
+            _s("Honeytokens and decoy files",
+               "Plant interesting-looking bait - a fake prod SSH key, a 'passwords' "
+               "file - where a snoop will look, then monitor it. Any access is almost "
+               "certainly hostile, so it's a high-signal, low-noise alert. A long-running "
+               "red team should use this to defend its own aggregated loot.",
+               ""),
+            _s("Watch it on every OS",
+               "Each OS can audit access to a file: Windows audit ACLs (SACLs) into the "
+               "Security log, auditd on Linux, OpenBSM / fs_usage on macOS - each wired "
+               "to a notification (log, desktop pop-up, email) when the bait is read.",
+               "Fits the same 'protect the operator' goal as the previous page - defend "
+               "the lab that holds your findings."),
+        ],
+        ["A touched decoy is almost always a real intruder - high signal.",
+         "Place bait where snoops look; alert the instant it's read.",
+         "Every OS can audit file access - use it to guard your own loot."]),
+    _page(
+        "blue-team-tooling", "Blue-team tooling for red teams", "Ch. 12",
+        "Know the defenders' tools - to protect your own fleet with them, and to "
+        "understand what will and won't catch you.",
+        [
+            _s("Centralize and query",
+               "Get logs off the host and into a central store so they survive and can "
+               "be searched later. osquery exposes a machine's state as SQL (processes, "
+               "logged-in users, shell history, file-access events) on a schedule; an "
+               "Elastic/Kibana-style stack aggregates and visualizes it across a fleet.",
+               "Erebus emits findings and events that such a stack could ingest; osquery "
+               "on a host is also quick recon if you find it during an engagement."),
+            _s("Two reasons to learn it",
+               "First, use the same tooling to monitor and protect the red team's own "
+               "attack infrastructure. Second, knowing what the blue team runs tells you "
+               "what is logged - which sharpens both evasion during an authorized op and "
+               "the detections that catch real adversaries afterward.",
+               ""),
+        ],
+        ["Offload logs centrally so they survive and stay searchable.",
+         "osquery = a machine's state as SQL; great for monitoring and recon.",
+         "Learn blue tooling to protect your fleet and understand detection."]),
 ]
 
 
@@ -236,6 +394,11 @@ def methodology_primer() -> str:
         "of blast radius. Never reveal stored secret values - they are redacted to 'set'.",
         "- Communicate risk with severity + CVSS, and note that CVSS lacks business "
         "context.",
+        "- Prefer techniques that reuse what's already on the host, and remember the "
+        "operator's own machine/lab is a target worth protecting (deny inbound, be the "
+        "sole admin, watch logins, decoy files).",
+        "- Map activity to MITRE ATT&CK where it helps, and frame detection in purple-"
+        "team terms (what was caught vs missed).",
         "- You are advisory only: recommend modules/steps by exact key, never run or "
         "generate exploits.",
     ]

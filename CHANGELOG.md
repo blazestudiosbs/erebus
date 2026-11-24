@@ -15,6 +15,7 @@ this project uses [Semantic Versioning](https://semver.org).
   open + copy-URL actions, and free/passive/API/live filter toggles.
 
 ### Added
+- Field Guide expanded to 16 pages, covering the rest of the source: progressive operations, a deeper knowledge-graph page (admin-vs-use, blast radius, cloud), credential stores/memory/cookies, living-off-the-land automation, protecting the operator, traps & deception, and blue-team tooling. Copilot primer updated to match. Still Erebus's own wording, book cited, not reproduced.
 - **Field Guide tab + copilot methodology primer**: an in-house offensive-security
   methodology (the offensive loop, scope/RoE, the attack plan, recon, credential
   hunting, attack graphs, metrics/CVSS, ATT&CK mapping, knowledge graphs, modes &
