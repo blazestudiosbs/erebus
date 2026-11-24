@@ -471,10 +471,13 @@ class EreConsole(cmd.Cmd):
 
     def do_pivot(self, arg: str) -> None:
         """pivot | pivot open <rhost> <rport> [-s <sid>] [-r <sid,sid,..>] [-l <lport>]
-               | pivot close <id> | pivot via <sid> | pivot via off
-        List/open/close scope-gated port-forwards; or route module scans through a
-        pivot session with `via` (so a scan reaches hosts only the pivot can see).
+               | pivot auto <target> <rport> | pivot close <id>
+               | pivot via <sid> | pivot via off
+        List/open/close scope-gated port-forwards; `auto` picks the shortest pivot
+        chain to a target from live sessions and opens it; `via` routes module
+        scans through a pivot session (reaching hosts only the pivot can see).
         """
+        from .core.autoroute import plan_route
         from .core.dial import DirectDialer, SessionDialer
         from .core.pivot import session_socat_relay
 
@@ -502,6 +505,31 @@ class EreConsole(cmd.Cmd):
                 return
             self.fw.dialer = SessionDialer(sess)
             print(col(f"  scans now route through session {sess.id} ({sess.host})", "good"))
+            return
+        if parts[0] == "auto" and len(parts) >= 3:
+            target, rport = parts[1], int(parts[2])
+            live_sessions = self.fw.sessions.live()
+            plan = plan_route(target, live_sessions)   # type: ignore[arg-type]
+            if plan is None:
+                print(col(f"  no route to {target} — no live session shares its subnet "
+                          f"(get a shell closer to it first)", "warn"))
+                return
+            if not plan:
+                print(col(f"  {target} is already a live session host — no pivot needed",
+                          "good"))
+                return
+            chain = " -> ".join(f"{s.id}:{s.host}" for s in plan)
+            print(col(f"  route: erebus -> {chain} -> {target}:{rport}", "dim"))
+            try:
+                fwd = pm.open_route(plan, target, rport)   # type: ignore[arg-type]
+            except ScopeError as exc:
+                print(col(f"  refused (out of scope): {exc}", "error"))
+                return
+            except OSError as exc:
+                print(col(f"  could not bind: {exc}", "error"))
+                return
+            print(col(f"  pivot {fwd.id}: {fwd.lhost}:{fwd.lport} -> {target}:{rport} "
+                      f"[{fwd.via}]", "good"))
             return
         if parts[0] == "close" and len(parts) > 1:
             ok = pm.close(int(parts[1]))
@@ -550,7 +578,7 @@ class EreConsole(cmd.Cmd):
             print(col(f"  pivot {fwd.id}: {chain}  [{fwd.via}]", "good"))
             return
         print("usage: pivot [list | open <rhost> <rport> [-s sid|-r sid,sid][-l lport] "
-              "| close <id>]")
+              "| auto <target> <rport> | close <id> | via <sid>|off]")
 
     def do_vuln(self, arg: str) -> None:
         """vuln <product> [version]  — correlate against the intel DB (NVD/KEV/EPSS)."""
