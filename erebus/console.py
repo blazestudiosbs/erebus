@@ -86,9 +86,11 @@ class EreConsole(cmd.Cmd):
 
     def _status(self) -> None:
         s = self.fw
+        op = s.current_op()
+        op_part = f"· op: {op['codename'] or op['name']} " if op is not None else ""
         line = (f"[ {s.config['edition']} · scope: {len(s.scope.show())} rule(s) "
                 f"· sessions: {len(s.sessions.live())} · jobs: {len(s.jobs())} "
-                f"· Tor: {'on' if s.config['tor'] else 'off'} ]")
+                f"{op_part}· Tor: {'on' if s.config['tor'] else 'off'} ]")
         print(col(line, "dim"))
 
     # --- commands ---
@@ -168,6 +170,67 @@ class EreConsole(cmd.Cmd):
         self._status()
 
     do_exploit = do_run
+
+    def _op_counts(self, op_id: int) -> str:
+        """A one-line tally of what an operation has produced so far."""
+        st = self.fw.store
+        n_find = sum(1 for r in st.findings() if r["op_id"] == op_id)
+        n_cred = sum(1 for r in st.credentials() if r["op_id"] == op_id)
+        n_sess = sum(1 for r in st.sessions() if r["op_id"] == op_id)
+        n_jobs = sum(1 for r in st.jobs() if r["op_id"] == op_id)
+        return (f"{n_jobs} job(s) · {n_find} finding(s) · "
+                f"{n_sess} session(s) · {n_cred} credential(s)")
+
+    def do_op(self, arg: str) -> None:
+        """op [status] | op new <name> [codename] | op end | op list
+        Wrap work as a named operation; new records are tagged to it."""
+        parts = shlex.split(arg)
+        verb = parts[0] if parts else "status"
+
+        if verb == "new":
+            if len(parts) < 2:
+                print("usage: op new <name> [codename]")
+                return
+            name = parts[1]
+            codename = " ".join(parts[2:])
+            op_id = self.fw.op_new(name, codename=codename)
+            label = codename or name
+            print(col(f"[+] operation #{op_id} '{label}' opened — "
+                      f"scope snapshotted, new records tagged to it", "good"))
+            return
+
+        if verb == "end":
+            ended = self.fw.op_end()
+            if ended is None:
+                print(col("  (no operation open)", "dim"))
+            else:
+                print(col(f"[+] operation #{ended} closed", "good"))
+            return
+
+        if verb == "list":
+            ops = self.fw.store.operations()
+            if not ops:
+                print(col("  (no operations — start one with: op new <name>)", "dim"))
+            for o in ops:
+                mark = col("●", "good") if o["status"] == "active" else col("○", "dim")
+                tag = o["codename"] or o["name"]
+                print(f"  {mark} #{o['id']:<3} {tag:24} {o['status']}")
+            return
+
+        if verb == "status":
+            op = self.fw.current_op()
+            if op is None:
+                print(col("  no operation open — start one with: op new <name>", "dim"))
+                return
+            tag = op["codename"] or op["name"]
+            print(col(f"◆ operation #{op['id']} — {tag}", "accent"))
+            if op["codename"] and op["name"] != op["codename"]:
+                print(col(f"  name: {op['name']}", "dim"))
+            print(col(f"  status: {op['status']}", "dim"))
+            print(col(f"  {self._op_counts(int(op['id']))}", "dim"))
+            return
+
+        print("usage: op [status | new <name> [codename] | end | list]")
 
     def do_scope(self, arg: str) -> None:
         """scope [show | allow <cidr> | load <file>]."""

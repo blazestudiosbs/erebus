@@ -44,7 +44,17 @@ CREATE TABLE IF NOT EXISTS credentials(
   id INTEGER PRIMARY KEY, host TEXT, port INTEGER, service TEXT,
   username TEXT, secret TEXT, kind TEXT, source TEXT, ts REAL,
   UNIQUE(host, port, username, secret));
+CREATE TABLE IF NOT EXISTS operations(
+  id INTEGER PRIMARY KEY, name TEXT, codename TEXT, scope TEXT,
+  status TEXT, started REAL, ended REAL);
+CREATE TABLE IF NOT EXISTS settings(
+  key TEXT PRIMARY KEY, value TEXT);
 """
+
+# Records tagged with the engagement (operation) that produced them. Nullable:
+# rows created outside any operation keep op_id NULL. The current op is stamped
+# automatically by the Store, so modules never wire it up by hand.
+_OP_TAGGED = ("jobs", "findings", "sessions", "credentials", "evidence")
 
 
 class Store:
@@ -52,16 +62,26 @@ class Store:
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self._lock = threading.Lock()
+        # The engagement whose id is stamped onto new rows; None = untagged.
+        # Loaded from settings so a "current op" survives a restart.
+        self.current_op_id: int | None = None
         with self._lock:
             self.db.executescript(SCHEMA)
             self._migrate()
             self.db.commit()
+        cur = self.get_setting("current_op")
+        self.current_op_id = int(cur) if cur and cur.isdigit() else None
 
     def _migrate(self) -> None:
         """Add columns introduced after a store was first created (idempotent)."""
         have = {r[1] for r in self.db.execute("PRAGMA table_info(findings)")}
         if "cvss" not in have:
             self.db.execute("ALTER TABLE findings ADD COLUMN cvss REAL")
+        # Tag existing record tables with op_id (nullable) for engagement scoping.
+        for table in _OP_TAGGED:
+            cols = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            if "op_id" not in cols:
+                self.db.execute(f"ALTER TABLE {table} ADD COLUMN op_id INTEGER")
 
     def add_target(self, host: str, status: str = "discovered") -> None:
         now = time.time()
@@ -97,10 +117,10 @@ class Store:
         with self._lock:
             self.db.execute(
                 "INSERT INTO findings"
-                "(host,module,title,severity,cve,kev,epss,cvss,attack,evidence_ref,ts) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                "(host,module,title,severity,cve,kev,epss,cvss,attack,evidence_ref,ts,op_id) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (host, module, title, severity, cve, int(bool(kev)), epss, cvss, attack,
-                 evidence_ref, time.time()),
+                 evidence_ref, time.time(), self.current_op_id),
             )
             self.db.commit()
 
@@ -124,8 +144,8 @@ class Store:
     def add_session(self, host: str, kind: str = "shell", transport: str = "tcp") -> int:
         with self._lock:
             cur = self.db.execute(
-                "INSERT INTO sessions(host,type,transport,opened) VALUES(?,?,?,?)",
-                (host, kind, transport, time.time()),
+                "INSERT INTO sessions(host,type,transport,opened,op_id) VALUES(?,?,?,?,?)",
+                (host, kind, transport, time.time(), self.current_op_id),
             )
             self.db.commit()
             return int(cur.lastrowid or 0)
@@ -142,9 +162,9 @@ class Store:
                      name: str = "", size: int = 0, note: str = "") -> int:
         with self._lock:
             cur = self.db.execute(
-                "INSERT INTO evidence(ref,host,module,kind,name,size,note,ts) "
-                "VALUES(?,?,?,?,?,?,?,?)",
-                (ref, host, module, kind, name, size, note, time.time()),
+                "INSERT INTO evidence(ref,host,module,kind,name,size,note,ts,op_id) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (ref, host, module, kind, name, size, note, time.time(), self.current_op_id),
             )
             self.db.commit()
             return int(cur.lastrowid or 0)
@@ -169,10 +189,10 @@ class Store:
         """Record a newly-queued job and return its persistent id."""
         with self._lock:
             cur = self.db.execute(
-                "INSERT INTO jobs(module,key,target,options,status,started) "
-                "VALUES(?,?,?,?,?,?)",
+                "INSERT INTO jobs(module,key,target,options,status,started,op_id) "
+                "VALUES(?,?,?,?,?,?,?)",
                 (module, key, target, json.dumps(options or {}, default=str),
-                 "queued", time.time()),
+                 "queued", time.time(), self.current_op_id),
             )
             self.db.commit()
             return int(cur.lastrowid or 0)
@@ -210,13 +230,80 @@ class Store:
         with self._lock:
             cur = self.db.execute(
                 "INSERT OR IGNORE INTO credentials"
-                "(host,port,service,username,secret,kind,source,ts) "
-                "VALUES(?,?,?,?,?,?,?,?)",
+                "(host,port,service,username,secret,kind,source,ts,op_id) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
                 (host, int(port or 0), service, username, secret, kind, source,
-                 time.time()),
+                 time.time(), self.current_op_id),
             )
             self.db.commit()
             return int(cur.lastrowid or 0)
 
     def credentials(self) -> list[sqlite3.Row]:
         return self.db.execute("SELECT * FROM credentials ORDER BY id").fetchall()
+
+    # -- settings (small key/value store) -----------------------------------
+    def get_setting(self, key: str) -> str | None:
+        row = self.db.execute(
+            "SELECT value FROM settings WHERE key=?", (key,)
+        ).fetchone()
+        return str(row["value"]) if row is not None else None
+
+    def set_setting(self, key: str, value: str | None) -> None:
+        with self._lock:
+            if value is None:
+                self.db.execute("DELETE FROM settings WHERE key=?", (key,))
+            else:
+                self.db.execute(
+                    "INSERT INTO settings(key,value) VALUES(?,?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (key, value),
+                )
+            self.db.commit()
+
+    # -- operations (engagement lifecycle) ----------------------------------
+    def create_operation(self, name: str, codename: str = "", scope: str = "") -> int:
+        """Open a new operation (status 'active') and make it the current op."""
+        with self._lock:
+            cur = self.db.execute(
+                "INSERT INTO operations(name,codename,scope,status,started) "
+                "VALUES(?,?,?,?,?)",
+                (name, codename, scope, "active", time.time()),
+            )
+            self.db.commit()
+            op_id = int(cur.lastrowid or 0)
+        self.set_current_op(op_id)
+        return op_id
+
+    def end_operation(self, op_id: int, status: str = "ended") -> None:
+        """Close an operation; if it was current, clear the current-op pointer."""
+        with self._lock:
+            self.db.execute(
+                "UPDATE operations SET status=?, ended=? WHERE id=? AND ended IS NULL",
+                (status, time.time(), int(op_id)),
+            )
+            self.db.commit()
+        if self.current_op_id == int(op_id):
+            self.set_current_op(None)
+
+    def set_current_op(self, op_id: int | None) -> None:
+        """Point new records at this operation (persisted across restarts)."""
+        self.current_op_id = int(op_id) if op_id is not None else None
+        self.set_setting("current_op", str(op_id) if op_id is not None else None)
+
+    def current_operation(self) -> sqlite3.Row | None:
+        if self.current_op_id is None:
+            return None
+        return self.db.execute(
+            "SELECT * FROM operations WHERE id=?", (self.current_op_id,)
+        ).fetchone()
+
+    def operations(self) -> list[sqlite3.Row]:
+        """All operations, most recent first."""
+        return self.db.execute(
+            "SELECT * FROM operations ORDER BY id DESC"
+        ).fetchall()
+
+    def operation(self, op_id: int) -> sqlite3.Row | None:
+        return self.db.execute(
+            "SELECT * FROM operations WHERE id=?", (int(op_id),)
+        ).fetchone()

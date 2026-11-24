@@ -5,6 +5,16 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Engagement lifecycle — operations (platform roadmap Phase 3, part 1)**: work can
+  now be wrapped as a named **operation**. An `operations` table records id, name,
+  codename, a **scope snapshot** taken when the op opens, status and start/end times;
+  jobs, findings, sessions, credentials and evidence carry a nullable `op_id`. The
+  store stamps the current op onto every new record automatically (no module wiring,
+  same pattern as the Homefield graph), and the current op is persisted in a small
+  `settings` table so it survives a restart. Console verbs `op new <name> [codename]`,
+  `op status`, `op list` and `op end`, plus a current-op marker in the status line.
+  Served at `GET /operations` (read) with token-gated `POST /operations` and
+  `POST /operations/end`. Existing databases migrate in place (idempotent `ALTER`).
 - **Credential-attack modules (platform roadmap Phase 2)**: two active, scope-gated
   modules - `auxiliary/creds/spray` (lockout-safe password spray: one password across
   all users per round, with a delay) and `auxiliary/creds/reuse` (test known/stored

@@ -73,6 +73,38 @@ class Framework:
             self.activity_log.attach(self.events)
         self.loader.discover()
 
+    # --- engagement lifecycle (operations) ---------------------------------
+    def op_new(self, name: str, codename: str = "") -> int:
+        """Open a named operation, snapshotting the current scope, and make it current.
+
+        New records (jobs, findings, sessions, credentials, evidence) are tagged
+        with this operation's id automatically by the store until ``op_end``.
+        """
+        import json as _json
+
+        snapshot = _json.dumps(list(self.scope.show()))
+        op_id = self.store.create_operation(name, codename=codename, scope=snapshot)
+        self.events.publish(Event(ev.OP_START, {
+            "op": op_id, "name": name, "codename": codename,
+        }))
+        return op_id
+
+    def op_end(self) -> int | None:
+        """Close the current operation, if any. Returns the ended op id."""
+        current = self.store.current_operation()
+        if current is None:
+            return None
+        op_id = int(current["id"])
+        self.store.end_operation(op_id)
+        self.events.publish(Event(ev.OP_END, {
+            "op": op_id, "name": current["name"],
+        }))
+        return op_id
+
+    def current_op(self) -> Any:
+        """The active operation row, or None when no operation is open."""
+        return self.store.current_operation()
+
     def use(self, key: str) -> Module:
         cls = self.loader.get(key)
         if not cls:

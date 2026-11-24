@@ -365,6 +365,15 @@ def create_app(framework: Any, token: str | None = None,
             out.append(d)
         return {"credentials": out}
 
+    @app.get("/operations")
+    async def list_operations() -> dict[str, Any]:
+        """Engagements (operations): the named work units records are tagged to."""
+        current = framework.store.current_operation()
+        return {
+            "operations": _rows(framework.store.operations()),
+            "current": dict(current) if current is not None else None,
+        }
+
     @app.get("/osint/categories")
     async def osint_categories() -> dict[str, Any]:
         c = _osint_catalog()
@@ -450,6 +459,22 @@ def create_app(framework: Any, token: str | None = None,
         except ScopeError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from None
         return {"job": jid, "module": module.name}
+
+    @app.post("/operations", dependencies=[Depends(require_token)])
+    async def open_operation(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        name = str(payload.get("name", "")).strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="missing 'name'")
+        codename = str(payload.get("codename", "")).strip()
+        op_id = framework.op_new(name, codename=codename)
+        current = framework.store.current_operation()
+        return {"ok": True, "op": op_id,
+                "current": dict(current) if current is not None else None}
+
+    @app.post("/operations/end", dependencies=[Depends(require_token)])
+    async def close_operation() -> dict[str, Any]:
+        op_id = framework.op_end()
+        return {"ok": True, "ended": op_id}
 
     @app.post("/scope/allow", dependencies=[Depends(require_token)])
     async def scope_allow(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
