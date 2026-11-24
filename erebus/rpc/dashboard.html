@@ -197,7 +197,7 @@
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Jobs</span><span>Pivots</span><span>Creds</span><span>Research</span><span>Reports</span><span>Notes</span><span>Terminal</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Jobs</span><span>Sessions</span><span>Pivots</span><span>Creds</span><span>Research</span><span>Reports</span><span>Notes</span><span>Terminal</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -261,6 +261,13 @@
         <h2>Jobs</h2>
         <p class="psub">Every module run, newest first &mdash; survives reconnects and restarts. A run left open when the server stopped shows as <b>interrupted</b>.</p>
         <div id="jobs-list"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="view-panel" id="sessionsview" style="display:none">
+      <div class="pwrap">
+        <h2>Sessions</h2>
+        <p class="psub">Caught shells. Use a live session's <b>#id</b> as the <code>SESSION</code> option for the <code>post/*</code> modules. Interactive shell work stays in the local <code>ereconsole</code> &mdash; no OS shell is exposed over the web.</p>
+        <div id="sessions-list"><div class="empty">loading&hellip;</div></div>
       </div>
     </div>
     <div class="view-panel" id="pivotsview" style="display:none">
@@ -368,7 +375,7 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Jobs:'jobsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   var curView='Flow', pollTimer=null;
   function setView(name){
     if(name!=='Flow' && !PANELS[name]) return;
@@ -384,6 +391,7 @@
     else if(name==='Modules'){ loadModules(); }
     else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
     else if(name==='Jobs'){ loadJobs(); pollTimer=setInterval(loadJobs,3000); }
+    else if(name==='Sessions'){ loadSessions(); pollTimer=setInterval(loadSessions,4000); }
     else if(name==='Pivots'){ loadPivots(); pollTimer=setInterval(loadPivots,3000); }
     else if(name==='Creds'){ loadCreds(); pollTimer=setInterval(loadCreds,5000); }
     else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
@@ -555,6 +563,22 @@
           +'<td>'+jobDur(j)+'</td><td class="jmut">'+when+'</td></tr>'; }).join('')
       +'</tbody></table>'; }
 
+  // ---- Sessions tab (read-only: caught shells) -------------------------
+  function loadSessions(){ fetch('sessions',{cache:'no-store'}).then(function(r){return r.json();}).then(renderSessions)
+    .catch(function(){ var b=document.getElementById('sessions-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function renderSessions(d){ var box=document.getElementById('sessions-list'); if(!box) return;
+    var ss=(d.sessions||[]);
+    if(!ss.length){ box.innerHTML='<div class="empty">no sessions yet - catch a shell with a handler (e.g. auxiliary/handler/reverse_tcp)</div>'; return; }
+    box.innerHTML='<table class="jtbl"><thead><tr><th>#</th><th>host</th><th>type</th><th>transport</th><th>state</th><th>opened</th></tr></thead><tbody>'
+      +ss.map(function(x){
+        var live=!!x.live, col=live?'#36d399':'#6f6690', lbl=live?'live':(x.closed?'closed':'stale');
+        var when=x.opened?new Date(x.opened*1000).toLocaleString():'';
+        return '<tr><td class="jnum">'+x.id+'</td><td>'+escHtml(x.host||'')+'</td>'
+          +'<td>'+escHtml(x.type||'')+'</td><td class="jmut">'+escHtml(x.transport||'')+'</td>'
+          +'<td><span class="jbadge" style="color:'+col+';border-color:'+col+'">'+lbl+'</span></td>'
+          +'<td class="jmut">'+when+'</td></tr>'; }).join('')
+      +'</tbody></table>'; }
+
   // ---- Pivots tab (active port-forwards) -------------------------------
   function loadPivots(){ fetch('pivots',{cache:'no-store'}).then(function(r){return r.json();}).then(renderPivots)
     .catch(function(){ var b=document.getElementById('pivots-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
@@ -684,6 +708,7 @@
     if(t.indexOf('scope')>=0){ loadScope(); }
     if(curView==='Findings' && (t.indexOf('finding')>=0||t.indexOf('module')>=0)){ loadFindings(); }
     if(curView==='Jobs' && t.indexOf('module')>=0){ loadJobs(); }
+    if(curView==='Sessions' && t.indexOf('session')>=0){ loadSessions(); }
     if(curView==='Pivots' && t.indexOf('pivot')>=0){ loadPivots(); }
     if(curView==='Creds' && (t.indexOf('cred')>=0||t.indexOf('module')>=0)){ loadCreds(); } };
 
