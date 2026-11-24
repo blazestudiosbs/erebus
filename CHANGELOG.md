@@ -4,6 +4,8 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+
+## [0.3.0] — 2026-11-23
 ### Added
 - `gather/username_enum` (flagship OSINT automation): check a username across
   many sites, WhatsMyName `wmn-data.json`-compatible, with a built-in starter list;
