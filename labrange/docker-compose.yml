@@ -1,0 +1,19 @@
+# Erebus lab range — deliberately simple local targets for integration tests
+# and hands-on practice. Everything binds to 127.0.0.1 only. AUTHORIZED,
+# LOCAL USE ONLY — never expose these ports off your machine.
+services:
+  # Minimal, deterministic web target the integration tests assert against.
+  web:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:8081:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  # Classic vulnerable app for manual practice (not required by the tests).
+  dvwa:
+    image: vulnerables/web-dvwa
+    ports:
+      - "127.0.0.1:8082:80"
+    restart: unless-stopped
