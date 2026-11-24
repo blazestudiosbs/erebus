@@ -1,10 +1,10 @@
 """Crash triage: organize the crashes a fuzzer found — dedup identical inputs,
 group by observed signal, rank, and minimize a corpus.
 
-Honest limitation: this dedups by *input* and the signal the fuzzer recorded.
-True crash-dedup (by faulting address / stack hash) needs re-executing each input
-under a debugger — out of scope here, and such re-execution belongs in the
-sandbox, never on the host.
+This dedups by *input* and the signal the fuzzer recorded. For root-cause dedup
+(by stack hash from re-running each input under a debugger) see
+:mod:`erebus.research.reproduce`, where re-execution happens in the sandbox,
+never on the host.
 """
 from __future__ import annotations
 
