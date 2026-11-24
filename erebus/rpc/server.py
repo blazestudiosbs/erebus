@@ -362,17 +362,26 @@ def create_app(framework: Any, token: str | None = None,
             raise HTTPException(status_code=400, detail="'rport' out of range")
         lport = int(payload.get("lport", 0) or 0)
         sid = payload.get("session")
-        relay = None
-        via = "direct"
-        if sid is not None:
-            sess = framework.sessions.get(int(sid))
-            if sess is None or not sess.alive:
-                raise HTTPException(status_code=400, detail=f"no live session {sid}")
-            relay_port = int(payload.get("relay_port", rport) or rport)
-            relay = session_socat_relay(sess, rhost, rport, relay_port)
-            via = f"session:{sid}"
+        route = payload.get("route")
         try:
-            fwd = framework.pivots.open(rhost, rport, lport=lport, relay=relay, via=via)
+            if route:
+                sessions = []
+                for rid in route:
+                    sess = framework.sessions.get(int(rid))
+                    if sess is None or not sess.alive:
+                        raise HTTPException(status_code=400, detail=f"no live session {rid}")
+                    sessions.append(sess)
+                fwd = framework.pivots.open_route(sessions, rhost, rport, lport=lport)
+            elif sid is not None:
+                sess = framework.sessions.get(int(sid))
+                if sess is None or not sess.alive:
+                    raise HTTPException(status_code=400, detail=f"no live session {sid}")
+                relay_port = int(payload.get("relay_port", rport) or rport)
+                relay = session_socat_relay(sess, rhost, rport, relay_port)
+                fwd = framework.pivots.open(rhost, rport, lport=lport, relay=relay,
+                                            via=f"session:{sid}")
+            else:
+                fwd = framework.pivots.open(rhost, rport, lport=lport)
         except ScopeError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from None
         except OSError as exc:

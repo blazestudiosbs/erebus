@@ -469,6 +469,74 @@ class EreConsole(cmd.Cmd):
             if out:
                 print(out, end="" if out.endswith("\n") else "\n")
 
+    def do_pivot(self, arg: str) -> None:
+        """pivot | pivot open <rhost> <rport> [-s <sid>] [-r <sid,sid,..>] [-l <lport>]
+               | pivot close <id>
+        List, open, or close scope-gated port-forwards. Open direct (Erebus dials
+        the downstream), via one session (-s), or via a multi-hop route (-r).
+        """
+        from .core.pivot import session_socat_relay
+
+        parts = shlex.split(arg)
+        pm = self.fw.pivots
+        if not parts or parts[0] in ("list", "ls"):
+            fwds = pm.list()
+            if not fwds:
+                print(col("  (no active pivots)", "dim"))
+            for f in fwds:
+                chain = " -> ".join([f"{f.lhost}:{f.lport}", *f.hops,
+                                     f"{f.rhost}:{f.rport}"])
+                print(f"  {f.id:<3} {chain}  [{f.via}]  conns={f.conns}")
+            return
+        if parts[0] == "close" and len(parts) > 1:
+            ok = pm.close(int(parts[1]))
+            print(f"closed pivot {parts[1]}" if ok else col(f"  no pivot {parts[1]}", "warn"))
+            return
+        if parts[0] == "open" and len(parts) >= 3:
+            rhost, rport = parts[1], int(parts[2])
+            lport, sid, route = 0, None, None
+            i = 3
+            while i < len(parts):
+                if parts[i] == "-l" and i + 1 < len(parts):
+                    lport = int(parts[i + 1])
+                    i += 2
+                elif parts[i] == "-s" and i + 1 < len(parts):
+                    sid = int(parts[i + 1])
+                    i += 2
+                elif parts[i] == "-r" and i + 1 < len(parts):
+                    route = [int(x) for x in parts[i + 1].split(",") if x.strip()]
+                    i += 2
+                else:
+                    i += 1
+            try:
+                if route:
+                    sessions = [self.fw.sessions.get(s) for s in route]
+                    if any(s is None or not s.alive for s in sessions):
+                        print(col("  one or more route sessions are not live", "error"))
+                        return
+                    fwd = pm.open_route(sessions, rhost, rport, lport=lport)  # type: ignore[arg-type]
+                elif sid is not None:
+                    sess = self.fw.sessions.get(sid)
+                    if sess is None or not sess.alive:
+                        print(col(f"  no live session {sid}", "error"))
+                        return
+                    relay = session_socat_relay(sess, rhost, rport, rport)
+                    fwd = pm.open(rhost, rport, lport=lport, relay=relay, via=f"session:{sid}")
+                else:
+                    fwd = pm.open(rhost, rport, lport=lport)
+            except ScopeError as exc:
+                print(col(f"  refused (out of scope): {exc}", "error"))
+                return
+            except OSError as exc:
+                print(col(f"  could not bind: {exc}", "error"))
+                return
+            chain = " -> ".join([f"{fwd.lhost}:{fwd.lport}", *fwd.hops,
+                                 f"{fwd.rhost}:{fwd.rport}"])
+            print(col(f"  pivot {fwd.id}: {chain}  [{fwd.via}]", "good"))
+            return
+        print("usage: pivot [list | open <rhost> <rport> [-s sid|-r sid,sid][-l lport] "
+              "| close <id>]")
+
     def do_vuln(self, arg: str) -> None:
         """vuln <product> [version]  — correlate against the intel DB (NVD/KEV/EPSS)."""
         parts = arg.split()

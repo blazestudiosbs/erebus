@@ -1307,9 +1307,14 @@
     if(!ps.length){ box.innerHTML='<div class="empty">no active pivots - open one via POST /pivots (scope-gated on the downstream)</div>'; return; }
     box.innerHTML='<table class="jtbl"><thead><tr><th>#</th><th>local</th><th></th><th>downstream</th><th>via</th><th>conns</th><th></th></tr></thead><tbody>'
       +ps.map(function(p){
+        var hops=(p.hops||[]);
+        var down=hops.length
+          ? hops.map(escHtml).join(' <span class="jmut">&rarr;</span> ')+' <span class="jmut">&rarr;</span> '+escHtml(p.rhost+':'+p.rport)
+          : escHtml(p.rhost+':'+p.rport);
+        var viaColor=hops.length?'#c08bff':'#4db5ff';
         return '<tr><td class="jnum">'+p.id+'</td><td>'+escHtml(p.lhost+':'+p.lport)+'</td>'
-          +'<td class="jmut">&rarr;</td><td>'+escHtml(p.rhost+':'+p.rport)+'</td>'
-          +'<td><span class="jbadge" style="color:#4db5ff;border-color:#4db5ff">'+escHtml(p.via)+'</span></td>'
+          +'<td class="jmut">&rarr;</td><td>'+down+'</td>'
+          +'<td><span class="jbadge" style="color:'+viaColor+';border-color:'+viaColor+'">'+escHtml(p.via)+'</span></td>'
           +'<td>'+(p.conns||0)+'</td>'
           +'<td>'+(hasTok()?('<button class="btn sm" data-pid="'+p.id+'">close</button>'):'')+'</td></tr>'; }).join('')
       +'</tbody></table>';
