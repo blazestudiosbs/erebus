@@ -71,3 +71,32 @@ def test_linux_creds_stores_and_findings():
     # each harvested cred also raises a finding (no secret in it)
     titles = [dict(f)["title"] for f in fw.store.findings()]
     assert any("Credential recovered" in t for t in titles)
+
+
+def test_parse_netrc_single_and_multiline():
+    from erebus.modules.post import _creds as C
+    one = C.parse_netrc("machine example.com login bob password s3cret")
+    assert one[0] == {"username": "bob", "secret": "s3cret", "kind": "password",
+                      "service": "netrc:example.com"}
+    multi = C.parse_netrc("machine a.com\nlogin u1\npassword p1\n"
+                          "machine b.com\nlogin u2\npassword p2")
+    assert [c["username"] for c in multi] == ["u1", "u2"]
+    assert [c["secret"] for c in multi] == ["p1", "p2"]
+
+
+def test_macos_creds_harvests_keys_history_netrc():
+    fw = Framework()
+    fw.sessions._live[1] = _FakeSession(1, "10.0.0.5", {
+        "@@KEY@@": ("@@KEY@@ /Users/bruce/.ssh/id_ed25519\n"
+                    "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n"
+                    "-----END OPENSSH PRIVATE KEY-----"),
+        ".zsh_history": "sshpass -p z3sh ssh a@b",
+        ".netrc": "machine api.example.com login svc password netpw",
+    })
+    m = fw.use("post/macos_creds")
+    m.set_option("SESSION", "1")
+    fw.run(m, background=False)
+    svcs = {dict(c)["service"]: dict(c) for c in fw.store.credentials()}
+    assert "ssh" in svcs and svcs["ssh"]["username"] == "bruce"
+    assert "ssh-history" in svcs and svcs["ssh-history"]["secret"] == "z3sh"
+    assert "netrc:api.example.com" in svcs and svcs["netrc:api.example.com"]["username"] == "svc"

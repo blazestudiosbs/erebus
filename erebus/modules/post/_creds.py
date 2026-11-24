@@ -120,6 +120,40 @@ def parse_unattend(text: str) -> list[Cred]:
     return out
 
 
+def parse_netrc(text: str) -> list[Cred]:
+    """~/.netrc: machine/login/password tokens (single- or multi-line)."""
+    out: list[Cred] = []
+    toks = text.split()
+    machine = login = pw = ""
+
+    def flush() -> None:
+        if login and pw:
+            svc = f"netrc:{machine}" if machine else "netrc"
+            out.append({"username": login, "secret": pw, "kind": "password",
+                        "service": svc})
+
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if t in ("machine", "default"):
+            flush()
+            machine = toks[i + 1] if (t == "machine" and i + 1 < len(toks)) else ""
+            login = pw = ""
+            i += 2 if t == "machine" else 1
+            continue
+        if t == "login" and i + 1 < len(toks):
+            login = toks[i + 1]
+            i += 2
+            continue
+        if t == "password" and i + 1 < len(toks):
+            pw = toks[i + 1]
+            i += 2
+            continue
+        i += 1
+    flush()
+    return out
+
+
 def _user_from_path(path: str) -> str:
     m = re.search(r"/home/([^/]+)/", path) or re.search(r"/Users/([^/]+)/", path)
     if m:
