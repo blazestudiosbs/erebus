@@ -263,6 +263,9 @@ def main() -> None:
     rpc.add_argument("--store", default=None,
                      help="framework store path (default: ~/.erebus/lab.db; "
                           ":memory: for amnesic)")
+    rpc.add_argument("--enable-session-exec", action="store_true",
+                     help="allow web API to run commands on caught sessions "
+                          "(opt-in, audited; off by default)")
     rpc.add_argument("--edition", choices=["workstation", "live"], default="workstation",
                      help="live keeps no logs")
     rpc.add_argument("--log", default=None, metavar="PATH",
@@ -379,12 +382,14 @@ def main() -> None:
             print("note: the live edition keeps no logs; "
                   "--log/--journal-dir/--evidence-dir were ignored")
         serve(fw, host=args.host, port=args.port, token=args.token,
-              cors_origins=args.cors_origin)
+              cors_origins=args.cors_origin,
+              enable_session_exec=getattr(args, 'enable_session_exec', False))
     elif args.cmd == "console":
         console_launch(store=args.store, edition=args.edition, log=args.log,
                        journal_dir=args.journal_dir, evidence_dir=args.evidence_dir,
                        serve=args.serve, host=args.host, port=args.port,
-                       token=args.token, scope_file=args.scope, lab=args.lab)
+                       token=args.token, scope_file=args.scope, lab=args.lab,
+                       enable_session_exec=getattr(args, 'enable_session_exec', False))
     else:
         console_launch()
 

@@ -306,3 +306,44 @@ def test_sessions_endpoint_marks_live():
         rows = {r["id"]: r for r in c.get("/sessions").json()["sessions"]}
         assert rows[live]["live"] is True
         assert rows[dead]["live"] is False
+
+
+def test_session_exec_disabled_by_default():
+    fw = _seed()
+
+    class _Live:
+        id, host, alive = 3, "10.0.0.9", True
+        def command(self, cmd, overall=8.0):   # noqa: ARG002
+            return "should-not-run"
+    fw.sessions._live[3] = _Live()
+    with _client(fw) as c:                      # create_app default: exec OFF
+        r = c.post("/sessions/3/cmd", json={"cmd": "id"}, headers=AUTH)
+        assert r.status_code == 403
+        assert "enable-session-exec" in r.json()["detail"]
+
+
+def test_session_exec_opt_in_runs_and_audits():
+    fw = _seed()
+    ran = {}
+
+    class _Live:
+        id, host, alive = 3, "10.0.0.9", True
+        def command(self, cmd, overall=8.0):   # noqa: ARG002
+            ran["cmd"] = cmd
+            return "uid=0(root)"
+    fw.sessions._live[3] = _Live()
+    app = create_app(fw, token=TOKEN, enable_session_exec=True)
+    with TestClient(app) as c:
+        r = c.post("/sessions/3/cmd", json={"cmd": "id"}, headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["output"] == "uid=0(root)" and ran["cmd"] == "id"
+    # the command was written to the audit log (events table)
+    logged = [dict(e) for e in fw.store.event_rows()]
+    assert any("session-exec" in (e.get("data") or "") for e in logged)
+
+
+def test_session_exec_requires_token():
+    fw = _seed()
+    app = create_app(fw, token=TOKEN, enable_session_exec=True)
+    with TestClient(app) as c:
+        assert c.post("/sessions/1/cmd", json={"cmd": "id"}).status_code == 401

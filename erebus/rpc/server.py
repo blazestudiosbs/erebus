@@ -54,7 +54,8 @@ _LIVE_HINT = "the live (amnesic) edition does not serve the dashboard"
 
 
 def create_app(framework: Any, token: str | None = None,
-               cors_origins: list[str] | None = None) -> Any:
+               cors_origins: list[str] | None = None,
+               enable_session_exec: bool = False) -> Any:
     """Build the FastAPI app bound to a live framework instance.
 
     ``token`` guards the write endpoint and the event streams; one is generated
@@ -84,6 +85,7 @@ def create_app(framework: Any, token: str | None = None,
 
     app = FastAPI(title="Erebus RPC", version="0.1.0", lifespan=lifespan)
     app.state.token = token
+    app.state.session_exec = bool(enable_session_exec)
     app.add_middleware(
         CORSMiddleware, allow_origins=cors_origins or [],
         allow_methods=["*"], allow_headers=["*"],
@@ -181,6 +183,39 @@ def create_app(framework: Any, token: str | None = None,
         for r in rows:
             r["live"] = (r.get("id") in live_ids) and not r.get("closed")
         return {"sessions": rows}
+
+    @app.post("/sessions/{sid}/cmd", dependencies=[Depends(require_token)])
+    async def session_cmd(sid: int, payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        """Run one command on a LIVE caught session and return its output.
+
+        OFF by default and OPT-IN (``--enable-session-exec``): this is the one
+        place the web API can drive an OS shell, so it stays disabled unless the
+        operator deliberately turns it on. Every command is written to the audit
+        log. Operates on the remote caught shell (a box the operator controls),
+        never on the Erebus host itself.
+        """
+        if not getattr(app.state, "session_exec", False):
+            raise HTTPException(
+                status_code=403,
+                detail="session command exec is disabled; start with "
+                       "--enable-session-exec to allow it (audited, opt-in)")
+        cmd = str(payload.get("cmd", "")).strip()
+        if not cmd:
+            raise HTTPException(status_code=400, detail="missing 'cmd'")
+        sess = framework.sessions.get(sid)
+        if sess is None or not sess.alive:
+            raise HTTPException(status_code=404, detail=f"no live session {sid}")
+        # audit trail: record who-ran-what before executing (hits events + activity log)
+        from ..core.events import LOG, Event
+        framework.events.publish(Event(LOG, {
+            "module": "session-exec", "level": "warn",
+            "msg": f"session {sid} ({sess.host}) exec: {cmd}"}))
+        try:
+            out = sess.command(cmd, overall=float(payload.get("timeout", 8.0)))
+        except OSError as exc:
+            raise HTTPException(status_code=502,
+                                detail=f"session {sid} failed: {exc}") from None
+        return {"ok": True, "id": sid, "host": sess.host, "cmd": cmd, "output": out}
 
     @app.get("/scope")
     async def scope_show() -> dict[str, Any]:
@@ -532,19 +567,32 @@ def create_app(framework: Any, token: str | None = None,
 
 
 def serve(framework: Any, host: str = "127.0.0.1", port: int = 8777,
-          token: str | None = None, cors_origins: list[str] | None = None) -> None:
+          token: str | None = None, cors_origins: list[str] | None = None,
+          enable_session_exec: bool = False) -> None:
     """Boot the RPC server (blocking). Requires the ``rpc`` extra."""
     try:
         import uvicorn
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise RuntimeError(_RPC_HINT) from exc
-    app = create_app(framework, token=token, cors_origins=cors_origins)
+    app = create_app(framework, token=token, cors_origins=cors_origins,
+                     enable_session_exec=enable_session_exec)
     print(f"RPC token: {app.state.token}")
+    if enable_session_exec:
+        _warn_session_exec(host)
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
+def _warn_session_exec(host: str) -> None:
+    print("[!] session command exec ENABLED - the web API can run commands on "
+          "caught shells (audited).")
+    if host not in ("127.0.0.1", "::1", "localhost"):
+        print(f"[!!] bound to {host} (not loopback): anyone who reaches this port "
+              "with the token gets shell on every caught session. Bind to 127.0.0.1.")
+
+
 def serve_in_thread(framework: Any, host: str = "127.0.0.1", port: int = 8777,
-                    token: str | None = None, cors_origins: list[str] | None = None) -> Any:
+                    token: str | None = None, cors_origins: list[str] | None = None,
+                    enable_session_exec: bool = False) -> Any:
     """Boot the RPC server in a background daemon thread sharing ``framework``.
 
     Returns ``(server, thread, token)``. Unlike :func:`serve`, this does not
@@ -561,7 +609,10 @@ def serve_in_thread(framework: Any, host: str = "127.0.0.1", port: int = 8777,
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise RuntimeError(_RPC_HINT) from exc
 
-    app = create_app(framework, token=token, cors_origins=cors_origins)
+    app = create_app(framework, token=token, cors_origins=cors_origins,
+                     enable_session_exec=enable_session_exec)
+    if enable_session_exec:
+        _warn_session_exec(host)
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, name="erebus-rpc", daemon=True)
