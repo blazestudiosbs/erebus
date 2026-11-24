@@ -5,6 +5,14 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Credential-attack modules (platform roadmap Phase 2)**: two active, scope-gated
+  modules - `auxiliary/creds/spray` (lockout-safe password spray: one password across
+  all users per round, with a delay) and `auxiliary/creds/reuse` (test known/stored
+  credentials against in-scope hosts = reuse blast radius). Backends: http-basic
+  (stdlib) and ssh (optional paramiko, new `creds` extra). Valid logins are recorded
+  as credentials (secret stored, redacted over the API) so they flow straight into the
+  Credentials tab and the Homefield reuse graph. Orchestration in `erebus/lib/
+  credattack.py` with injected attempts, fully unit-tested without network.
 - **Homefield knowledge graph (platform roadmap Phase 1)**: `erebus/graph.py`
   assembles the estate as host/service/account nodes with exposes/has-cred edges,
   modelling credential **reuse** as one account node linked to every host it
