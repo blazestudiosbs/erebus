@@ -5,6 +5,17 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Multi-hop pivot routes & console `pivot` command**: the pivot layer can now reach a
+  downstream through an ordered **chain** of controlled hosts, not just one. `PivotManager.
+  open_route(sessions, rhost, rport)` starts a socat/nc relay on every hop (last-first so
+  each is listening before the hop ahead dials it) and scope-gates the downstream **and
+  every hop host** before anything binds — a chain touching an out-of-scope host is refused
+  with `ScopeError`. A pure `route_relay_commands()` builds the per-hop relay commands for
+  review/tests. The console gains a `pivot` command (`list` / `open <rhost> <rport>
+  [-s sid | -r sid,sid,…] [-l lport]` / `close <id>`) for direct, single-session, or
+  multi-hop forwards, and `POST /pivots` accepts a `route` of session ids. The dashboard
+  Pivots tab renders the full hop chain (`local → hop → … → downstream`) for routes. Still
+  just a scope-gated byte relay: it moves the operator's own traffic and runs no implant.
 - **Audit scanner & post modules (read-only)**: two new advisory modules.
   `auxiliary/scanner/http_headers` audits a web service's HTTP security response headers
   (HSTS, CSP, X-Frame-Options/`frame-ancestors`, `X-Content-Type-Options: nosniff`,

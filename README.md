@@ -95,7 +95,7 @@ box needs read access (a PAT or a read-only deploy key). Restart
 
 | Command | What it does |
 |---|---|
-| `ereconsole` / `erebus console` | Interactive console (`search`/`use`/`set`/`run`/`sessions`/`ask`/`scope`/…). `--serve` co-hosts the dashboard. |
+| `ereconsole` / `erebus console` | Interactive console (`search`/`use`/`set`/`run`/`sessions`/`pivot`/`ask`/`scope`/…). `--serve` co-hosts the dashboard. |
 | `erebus rpc` | Serve the authenticated control API + 3D dashboard (`--token`, `--cors-origin`). |
 | `erebus intel` | CVE intel — NVD/KEV/EPSS ingest, lookup, correlate. |
 | `erebus report` | Engagement report → Markdown, HTML, or **PDF** (ATT&CK grouped by tactic). |

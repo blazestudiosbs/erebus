@@ -56,11 +56,13 @@ class Forward:
     opened: float = field(default_factory=time)
     conns: int = 0
     status: str = "listening"
+    hops: list[str] = field(default_factory=list)   # pivot-host chain for a route
 
     def as_dict(self) -> dict[str, Any]:
         return {"id": self.id, "rhost": self.rhost, "rport": self.rport,
                 "lhost": self.lhost, "lport": self.lport, "via": self.via,
-                "opened": self.opened, "conns": self.conns, "status": self.status}
+                "opened": self.opened, "conns": self.conns, "status": self.status,
+                "hops": list(self.hops)}
 
 
 class PivotManager:
@@ -97,6 +99,31 @@ class PivotManager:
         t.start()
         self._events.publish(ev.Event(ev.PIVOT_OPEN, {
             "id": fid, "rhost": rhost, "rport": rport, "lport": bound_port, "via": via}))
+        return fwd
+
+    def open_route(self, sessions: list[Session], rhost: str, rport: int,
+                   lport: int = 0, lhost: str = "127.0.0.1",
+                   relay_ports: list[int] | None = None,
+                   base_relay_port: int = 42000) -> Forward:
+        """Open a **multi-hop** forward: reach ``rhost:rport`` through an ordered
+        chain of controlled pivot hosts (``sessions``), each running a socat/nc
+        relay so bytes traverse every hop in turn.
+
+        Scope-gates the downstream *and every hop host* before anything starts, so
+        a chain that touches an out-of-scope host is refused with ``ScopeError``.
+        A single-hop route is equivalent to a ``session`` forward.
+        """
+        if not sessions:
+            raise ValueError("a route needs at least one pivot session")
+        hop_hosts = [s.host for s in sessions]
+        self._scope.check([rhost, *hop_hosts])          # downstream + every hop in scope
+        ports = relay_ports or [base_relay_port + i for i in range(len(sessions))]
+        if len(ports) != len(sessions):
+            raise ValueError("relay_ports must match the number of hops")
+        relay = session_route_relay(sessions, rhost, rport, ports)
+        via = "route:" + ">".join(str(s.id) for s in sessions)
+        fwd = self.open(rhost, rport, lport=lport, lhost=lhost, relay=relay, via=via)
+        fwd.hops = hop_hosts
         return fwd
 
     def _serve(self, fid: int, srv: socket.socket, connect: Relay) -> None:
@@ -183,4 +210,46 @@ def session_socat_relay(session: Session, rhost: str, rport: int,
 
     def connect() -> socket.socket:
         return socket.create_connection((session.host, relay_port), timeout=timeout)
+    return connect
+
+
+def route_relay_commands(hop_hosts: list[str], relay_ports: list[int],
+                         rhost: str, rport: int) -> list[str]:
+    """The socat/nc command each hop runs for a multi-hop route, in hop order.
+
+    Pure (no I/O): hop *i* listens on ``relay_ports[i]`` and forwards to the next
+    hop's ``(host, relay_port)``; the last hop forwards to the real downstream
+    ``rhost:rport``. Erebus then dials ``hop_hosts[0]:relay_ports[0]`` and the
+    bytes walk the whole chain. Useful for review/tests without starting anything.
+    """
+    if not (len(hop_hosts) == len(relay_ports) >= 1):
+        raise ValueError("hop_hosts and relay_ports must be equal, non-empty lists")
+    cmds: list[str] = []
+    for i in range(len(hop_hosts)):
+        if i + 1 < len(hop_hosts):
+            dhost, dport = hop_hosts[i + 1], relay_ports[i + 1]   # -> next hop
+        else:
+            dhost, dport = rhost, rport                           # last hop -> downstream
+        cmds.append(socat_relay_command(dhost, dport, relay_ports[i]))
+    return cmds
+
+
+def session_route_relay(sessions: list[Session], rhost: str, rport: int,
+                        relay_ports: list[int], timeout: float = 10.0) -> Relay:
+    """Start a socat/nc relay on every hop in ``sessions`` (ordered first->last)
+    so a connection walks the whole chain to ``rhost:rport``, and return a relay
+    that dials the first hop's relay port.
+
+    Hops are started last-first so each is listening before the hop in front of it
+    dials it. The returned relay reaches the downstream only through the chain.
+    """
+    hop_hosts = [s.host for s in sessions]
+    cmds = route_relay_commands(hop_hosts, relay_ports, rhost, rport)
+    for sess, cmd in zip(reversed(sessions), reversed(cmds)):
+        sess.command(cmd, overall=6.0)
+
+    first_host, first_port = sessions[0].host, relay_ports[0]
+
+    def connect() -> socket.socket:
+        return socket.create_connection((first_host, first_port), timeout=timeout)
     return connect
