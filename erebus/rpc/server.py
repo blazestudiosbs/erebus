@@ -447,10 +447,14 @@ def create_app(framework: Any, token: str | None = None,
         """The homefield knowledge graph: host/service/account nodes + edges,
         with credential-reuse modelled as shared account nodes. Read-only.
         ``?op=<id>`` scopes it to one operation's footprint."""
-        from erebus.graph import build_graph
+        from erebus.graph import build_graph, pivot_routes
         op = request.query_params.get("op", "").strip()
         op_id = int(op) if op.isdigit() else None
-        return build_graph(framework.store, op_id=op_id)
+        g = build_graph(framework.store, op_id=op_id)
+        g["routes"] = pivot_routes(
+            framework.store,
+            [f.as_dict() for f in framework.pivots.list() if f.status == "listening"])
+        return g
 
     @app.get("/homefield/blast", dependencies=[Depends(require_token)])
     def graph_blast(request: Request) -> dict[str, Any]:
