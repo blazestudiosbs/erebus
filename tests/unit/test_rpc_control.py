@@ -403,7 +403,7 @@ def test_osint_endpoints():
 # --- copilot LLM auto-detect ---------------------------------------------
 
 def test_pick_ollama_model_prefers_instruct_and_avoids_reasoning():
-    from erebus.rpc.server import _pick_ollama_model
+    from erebus.connectors.ollama_detect import pick_model as _pick_ollama_model
     assert _pick_ollama_model([]) == ""
     # reasoning models are deprioritised vs a plain chat model
     assert _pick_ollama_model(["qwen3:32b", "llama3.1:8b-instruct"]) == "llama3.1:8b-instruct"

@@ -4,6 +4,20 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Added
+- Copilot LLM auto-detect: `POST /copilot/ollama/autodetect` finds a working
+  raw-Ollama endpoint (accepts a candidate only if native `/api/tags` answers,
+  so Open WebUI / nginx proxies that 405 the chat path are skipped) and picks a
+  sane default model (prefers instruct/known chat families, avoids reasoning
+  models). Dashboard auto-detects on first open and self-heals a failed ask;
+  shared `erebus/connectors/ollama_detect.py` powers both the endpoint and CLI.
+- `erebus module new … --draft`: copilot-assisted drafting of a module's `run()`
+  body via the LLM connector. The draft is validated (must parse; no banned
+  imports/calls — subprocess/os/socket/eval/exec/file-writes), written to the
+  private module path marked **AI-DRAFTED — REVIEW BEFORE USE**, and — like every
+  scaffolded module — never auto-loaded or run. Falls back to the TODO stub if
+  drafting is unavailable or the draft is rejected. For ollama with no `--url`,
+  the endpoint is auto-detected.
 
 ## [0.3.0] — 2026-11-23
 ### Added

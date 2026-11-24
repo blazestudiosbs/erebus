@@ -69,7 +69,18 @@ def _detect_input(tool_input: str) -> str:
     return ""
 
 
-def render_module(key: str, *, author: str = "you", osint_tool: Any = None) -> str:
+def resolve_option(mtype: str, osint_tool: Any = None) -> tuple[str, str, str]:
+    """Return (option_name, kind, desc) for an auxiliary module's input option.
+    Post modules use a fixed SESSION option instead (handled in render)."""
+    if osint_tool is not None:
+        det = _detect_input(getattr(osint_tool, "input", ""))
+        if det in _INPUT_OPTION:
+            return _INPUT_OPTION[det]
+    return ("QUERY", "string", "input")
+
+
+def render_module(key: str, *, author: str = "you", osint_tool: Any = None,
+                  drafted_body: str | None = None) -> str:
     """Render a module skeleton for ``<type>/<name>`` (e.g. auxiliary/gather/foo)."""
     parts = [p for p in key.strip().strip("/").split("/") if p]
     if len(parts) < 2:
@@ -111,15 +122,18 @@ def render_module(key: str, *, author: str = "you", osint_tool: Any = None) -> s
                 '        # TODO: act on the session (read-only/advisory).\n'
                 f'        self.info_("{name}: not implemented yet")')
     else:
-        opt_name, kind, odesc = ("QUERY", "string", "input")
-        if osint_tool is not None:
-            det = _detect_input(getattr(osint_tool, "input", ""))
-            if det in _INPUT_OPTION:
-                opt_name, kind, odesc = _INPUT_OPTION[det]
+        opt_name, kind, odesc = resolve_option(mtype, osint_tool)
         options = (f'        OptionSpec("{opt_name}", required=True, kind="{kind}",\n'
                    f'                   desc="{odesc}"),')
         body = f'        # TODO: implement. {opt_name} is passive (not scope-gated).\n' \
                f'        self.info_("{name}: not implemented yet")'
+
+    if drafted_body is not None:
+        body = drafted_body
+        banner = ("\nAI-DRAFTED - REVIEW BEFORE USE. This run() body was drafted by an "
+                  "LLM from the module description; read every line, confirm it is "
+                  "passive and in-scope, and test it before trusting it. Not auto-loaded.\n")
+        seed = banner + seed
 
     return _TEMPLATE.format(
         desc=desc_short, seed=seed, base=base, cls=cls, name=name,
@@ -137,9 +151,11 @@ def default_module_dir() -> Path:
 
 
 def write_module(key: str, *, out_dir: Path | None = None, author: str = "you",
-                 osint_tool: Any = None, force: bool = False) -> Path:
+                 osint_tool: Any = None, force: bool = False,
+                 drafted_body: str | None = None) -> Path:
     """Render + write a module skeleton; returns the path. Won't overwrite unless force."""
-    code = render_module(key, author=author, osint_tool=osint_tool)
+    code = render_module(key, author=author, osint_tool=osint_tool,
+                         drafted_body=drafted_body)
     base = out_dir or default_module_dir()
     fname = key.strip().strip("/").split("/")[-1] + ".py"
     base.mkdir(parents=True, exist_ok=True)

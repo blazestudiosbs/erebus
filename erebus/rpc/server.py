@@ -54,29 +54,8 @@ _RPC_HINT = 'The RPC server needs FastAPI + uvicorn. Install with: pip install -
 _LIVE_HINT = "the live (amnesic) edition does not serve the dashboard"
 
 
-def _pick_ollama_model(models: list) -> str:
-    """Choose a sensible default model: prefer instruct/chat families, avoid
-    reasoning models (which stall on token limits). Returns '' for an empty list."""
-    if not models:
-        return ""
-    fams = (("llama3.1", 4), ("llama3", 3), ("qwen2.5", 3), ("mistral", 3),
-            ("phi3", 2), ("gemma2", 2), ("llama", 1))
-    bad = ("r1", "qwq", "thinking", "reasoning", "deepseek-r", "qwen3")
-
-    def score(name: str) -> int:
-        low = name.lower()
-        sc = 5 if "instruct" in low else 0
-        for fam, w in fams:
-            if fam in low:
-                sc += w
-                break
-        for b in bad:
-            if b in low:
-                sc -= 4
-        return sc
-
-    return sorted(models, key=lambda n: (-score(n), len(n)))[0]
-
+# re-exported from the shared autodetect module so the RPC endpoint and the
+# `erebus module new --draft` CLI pick models the same way.
 
 _OSINT_CATALOG = None
 
@@ -572,45 +551,21 @@ def create_app(framework: Any, token: str | None = None,
         Accepts a candidate only if its native /api/tags responds (which the Open
         WebUI / nginx proxy on :3000 does not), so it reliably skips proxies that
         would 405 the chat path. Returns the first working {url, model, models}."""
-        from erebus.connectors.base import Connector
-        cands = payload.get("candidates") or []
-        seen: set[str] = set()
-        urls: list[str] = []
-        for c in cands:
-            u = str(c or "").strip().rstrip("/")
-            if u and u not in seen:
-                seen.add(u)
-                urls.append(u)
-        if not urls:
+        from erebus.connectors.ollama_detect import NoEndpoint, autodetect
+        urls = [str(c or "").strip() for c in (payload.get("candidates") or [])]
+        if not any(u for u in urls):
             raise HTTPException(status_code=400, detail="no candidate URLs")
         try:
-            key = framework.vault.get("ollama")
-        except VaultError:
-            key = None
-        hdrs = {"Authorization": f"Bearer {key}"} if key else {}
-        tried = []
-        for base in urls:
-            conn = Connector(framework.vault, allow_insecure=True,
-                             offline=bool(framework.config.get("offline")),
-                             tor=bool(framework.config.get("tor")))
-            conn.base_url = base
-            try:
-                data = conn.get_json("/api/tags", secret_headers=hdrs)
-            except NetworkDisabled as exc:
-                raise HTTPException(status_code=503, detail=str(exc)) from None
-            except (ConnectorError, MissingKey) as exc:
-                tried.append({"url": base, "error": str(exc)[:120]})
-                continue
-            models = ([str(m.get("name")) for m in data["models"]
-                       if isinstance(m, dict) and m.get("name")]
-                      if isinstance(data, dict) and isinstance(data.get("models"), list)
-                      else [])
-            if models:
-                return {"ok": True, "url": base, "model": _pick_ollama_model(models),
-                        "models": models, "tried": tried}
-            tried.append({"url": base, "error": "no models at /api/tags"})
-        return {"ok": False, "tried": tried,
-                "detail": "no raw-Ollama endpoint responded on /api/tags among the candidates"}
+            url, model, models, tried = autodetect(
+                framework.vault, urls,
+                offline=bool(framework.config.get("offline")),
+                tor=bool(framework.config.get("tor")))
+        except NetworkDisabled as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from None
+        except NoEndpoint as exc:
+            return {"ok": False, "tried": exc.tried,
+                    "detail": "no raw-Ollama endpoint responded on /api/tags among the candidates"}
+        return {"ok": True, "url": url, "model": model, "models": models, "tried": tried}
 
     @app.post("/copilot/ollama/key", dependencies=[Depends(require_token)])
     def ollama_key(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
