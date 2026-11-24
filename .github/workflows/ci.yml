@@ -1,20 +1,35 @@
 name: ci
+
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
+
+# cancel superseded runs on the same ref
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        # 3.9 is the project's floor (requires-python >= 3.9) and the runtime
+        # the FastAPI handlers must stay compatible with — keep it in the matrix.
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
       - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: mypy erebus
-      - run: pytest
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Types (mypy)
+        run: mypy erebus
+      - name: Tests (pytest)
+        run: pytest

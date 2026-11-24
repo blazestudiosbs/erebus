@@ -1,5 +1,7 @@
 # Erebus
 
+[![ci](https://github.com/blazestudiosbs/erebus/actions/workflows/ci.yml/badge.svg)](https://github.com/blazestudiosbs/erebus/actions/workflows/ci.yml)
+
 A modular, Metasploit-style security **research & testing** framework — for your
 own lab and targets you have written permission to test. Pure-stdlib core, a
 console, a live web dashboard, reporting, an isolation sandbox, a fuzzing/triage
