@@ -306,13 +306,37 @@
   .dns-txt .t{ font-family:ui-monospace,monospace; font-size:12px; color:#cfc6ef; word-break:break-all;
     background:rgba(10,8,18,0.55); border:1px solid #1b1630; border-radius:7px; padding:7px 10px; }
   .dns-none{ padding:11px 15px; color:#6e6a85; font-family:ui-monospace,monospace; font-size:12px; }
+  /* Field Guide (wiki) */
+  .wiki-src{ font-size:11.5px; color:#8a81ad; margin:0 0 14px; padding:10px 13px; border-radius:10px;
+    background:linear-gradient(180deg, rgba(26,20,42,.6), rgba(14,11,24,.6)); border:1px solid #241a3a;
+    box-shadow:0 1px 0 var(--edge), inset 0 1px 0 rgba(201,163,255,.08); line-height:1.5; }
+  .wiki-src b{ color:#cfc6ef; }
+  .wcard{ margin-bottom:10px; padding:0; overflow:hidden; }
+  .wcard .whead{ display:flex; align-items:center; gap:10px; padding:12px 15px; cursor:pointer; }
+  .wcard .wttl{ color:#e6e1ff; font-weight:600; font-size:14px; flex:1; }
+  .wcard .wch{ color:#8a7fb0; font-size:10.5px; font-family:ui-monospace,monospace; padding:2px 8px;
+    border:1px solid #2a2340; border-radius:999px; white-space:nowrap; }
+  .wcard .wchev{ color:#6f6690; font-size:12px; transition:transform .12s; }
+  .wcard.open .wchev{ transform:rotate(90deg); color:var(--accent); }
+  .wcard .wsum{ padding:0 15px 10px; color:#9a92b8; font-size:12.5px; line-height:1.55; }
+  .wcard .wbody{ display:none; padding:0 15px 14px; }
+  .wcard.open .wbody{ display:block; animation:ofade .16s ease; }
+  .wsec{ margin:12px 0; } .wsec:first-child{ margin-top:4px; }
+  .wsec .wh{ color:#cfc6ef; font-size:12.5px; font-weight:600; margin-bottom:4px; }
+  .wsec .wp{ color:#b7afd6; font-size:12.5px; line-height:1.6; }
+  .wsec .win{ margin-top:6px; font-size:12px; color:#9cdbff; line-height:1.55;
+    padding:7px 11px; border-left:2px solid #2d6; border-radius:0 7px 7px 0; background:rgba(45,160,110,.08); }
+  .wsec .win b{ color:#5dffa5; }
+  .wkey{ margin:12px 0 0; padding:10px 13px; border-radius:9px; background:rgba(10,8,18,.5); border:1px solid #1b1630; }
+  .wkey .wkh{ color:#8a81ad; font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; margin-bottom:6px; }
+  .wkey ul{ margin:0; padding-left:18px; } .wkey li{ color:#cfc6ef; font-size:12px; margin:3px 0; line-height:1.5; }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Recon</span><span>Findings</span><span>OSINT</span><span>Access</span><span>Jobs</span><span>Research</span><span>Report</span><span>Console</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Recon</span><span>Findings</span><span>OSINT</span><span>Access</span><span>Jobs</span><span>Research</span><span>Report</span><span>Guide</span><span>Console</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -374,6 +398,15 @@
         </div>
         <div class="dns-status" id="dns-status"></div>
         <div id="dns-out"></div>
+      </div>
+    </div>
+    <div class="view-panel" id="guideview" style="display:none">
+      <div class="pwrap">
+        <h2>Field Guide</h2>
+        <p class="psub">Erebus's own offensive-security methodology, mapped to the tools in this cockpit. Each page points to the feature that supports it.</p>
+        <div class="wiki-src" id="wiki-src"></div>
+        <input class="filter" id="wiki-filter" placeholder="filter the guide&hellip;" spellcheck="false"/>
+        <div id="wiki-list"><div class="empty">loading&hellip;</div></div>
       </div>
     </div>
     <div class="view-panel" id="findingsview" style="display:none">
@@ -522,11 +555,11 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
   var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules','DNS'], Findings:['Findings'], OSINT:['OSINT'],
     Access:['Sessions','Pivots','Creds'], Jobs:['Jobs'], Research:['Research'],
-    Report:['Reports','Notes'], Console:['Terminal'] };
+    Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
   var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
     Creds:'Credentials', Reports:'Export', Notes:'Notes' };
   var WRAP_SEL='.pwrap,.tgt-wrap,.notes-wrap,.term-wrap';
@@ -561,6 +594,7 @@
     if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
     else if(name==='Modules'){ loadModules(); }
     else if(name==='DNS'){ dnsInit(); }
+    else if(name==='Guide'){ wikiInit(); }
     else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
     else if(name==='OSINT'){ osintInit(); }
     else if(name==='Jobs'){ loadJobs(); pollTimer=setInterval(loadJobs,3000); }
@@ -791,6 +825,39 @@
       else if(res.status===403){ sessOut('<span class="err">'+escHtml((res.j&&res.j.detail)||'session exec disabled')+'</span>\n'); }
       else { sessOut('<span class="err">'+escHtml((res.j&&res.j.detail)||('HTTP '+res.status))+'</span>\n'); }
     }).catch(function(e){ sessOut('<span class="err">request failed: '+escHtml(String(e))+'</span>\n'); }); }
+
+  // ---- Field Guide tab (in-house methodology wiki) --------------------
+  var wikiData=null;
+  function wikiInit(){ var f=document.getElementById('wiki-filter');
+    if(f && !f._wired){ f._wired=1; f.addEventListener('input',function(){ wikiRender(f.value); }); }
+    if(wikiData){ wikiRender(f?f.value:''); return; }
+    fetch('wiki',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){ wikiData=j;
+      var src=document.getElementById('wiki-src');
+      if(src && j.source){ src.innerHTML='Recommended reading: <b>'+escHtml(j.source.title)+'</b> \u2014 '
+        +escHtml(j.source.author)+' ('+escHtml(j.source.publisher||'')+'). '+escHtml(j.source.note||''); }
+      wikiRender(f?f.value:''); })
+      .catch(function(){ var b=document.getElementById('wiki-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function wikiRender(q){ var box=document.getElementById('wiki-list'); if(!box||!wikiData) return;
+    q=(q||'').trim().toLowerCase();
+    var pages=(wikiData.pages||[]).filter(function(p){ if(!q) return true;
+      var hay=(p.title+' '+p.summary+' '+p.chapter+' '+(p.key_points||[]).join(' ')
+        +' '+(p.sections||[]).map(function(s){return s.heading+' '+s.body+' '+s.erebus;}).join(' ')).toLowerCase();
+      return hay.indexOf(q)>=0; });
+    if(!pages.length){ box.innerHTML='<div class="empty">nothing matches</div>'; return; }
+    box.innerHTML=pages.map(function(p){
+      var secs=(p.sections||[]).map(function(s){
+        return '<div class="wsec"><div class="wh">'+escHtml(s.heading)+'</div><div class="wp">'+escHtml(s.body)+'</div>'
+          +(s.erebus?('<div class="win"><b>In Erebus \u2192</b> '+escHtml(s.erebus)+'</div>'):'')+'</div>'; }).join('');
+      var keys=(p.key_points||[]).length?('<div class="wkey"><div class="wkh">Key points</div><ul>'
+        +p.key_points.map(function(k){return '<li>'+escHtml(k)+'</li>';}).join('')+'</ul></div>'):'';
+      return '<div class="card wcard" data-ws="'+escHtml(p.slug)+'">'
+        +'<div class="whead"><span class="wttl">'+escHtml(p.title)+'</span><span class="wch">'+escHtml(p.chapter)+'</span><span class="wchev">\u25B6</span></div>'
+        +'<div class="wsum">'+escHtml(p.summary)+'</div>'
+        +'<div class="wbody">'+secs+keys+'</div></div>'; }).join('');
+    var cards=box.querySelectorAll('.wcard');
+    for(var i=0;i<cards.length;i++){ (function(card){ var h=card.querySelector('.whead');
+      if(h) h.onclick=function(){ card.classList.toggle('open'); }; })(cards[i]); }
+  }
 
   // ---- DNS tab (dnsdumpster-style passive DNS report) ------------------
   function dnsInit(){ var q=document.getElementById('dns-q'), go=document.getElementById('dns-go');

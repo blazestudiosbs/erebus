@@ -15,6 +15,16 @@ this project uses [Semantic Versioning](https://semver.org).
   open + copy-URL actions, and free/passive/API/live filter toggles.
 
 ### Added
+- **Field Guide tab + copilot methodology primer**: an in-house offensive-security
+  methodology (the offensive loop, scope/RoE, the attack plan, recon, credential
+  hunting, attack graphs, metrics/CVSS, ATT&CK mapping, knowledge graphs, modes &
+  ethics), each page mapped to the Erebus feature that supports it. Lives in
+  `erebus/fieldguide.py` as one source of truth, served read-only at `GET /wiki`
+  and rendered as a browsable 3D-card Guide tab; a compact paraphrased primer is
+  folded into the copilot's system prompt so "what next?" advice follows the loop
+  and scope rules. Content is Erebus's own wording; it cites Johann Rehberger's
+  "Cybersecurity Attacks - Red Team Strategies" (Packt, 2020) as recommended
+  reading rather than reproducing it.
 - **DNS tab (dnsdumpster-style)**: a passive DNS report for a domain, grouped the
   way dnsdumpster presents it — DNS Servers (NS), MX, TXT, and Host (A/AAAA)
   records — with each host enriched with its IP, reverse DNS and ASN / netblock

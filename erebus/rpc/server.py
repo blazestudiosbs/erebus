@@ -394,6 +394,12 @@ def create_app(framework: Any, token: str | None = None,
         return {"target": target, "kind": detect_target_type(target),
                 "total": len(tools), "tools": [_osint_tool_dict(t) for t in tools[:300]]}
 
+    @app.get("/wiki")
+    async def wiki() -> dict[str, Any]:
+        """The Erebus Field Guide: in-house methodology pages (static, read-only)."""
+        from erebus.fieldguide import PAGES, SOURCE
+        return {"source": SOURCE, "pages": PAGES}
+
     @app.get("/dns", dependencies=[Depends(require_token)])
     def dns_report(request: Request) -> dict[str, Any]:
         """Passive dnsdumpster-style DNS report for a domain: NS/MX/TXT/host records,

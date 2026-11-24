@@ -11,6 +11,11 @@ from typing import Any, Protocol
 
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
+def _methodology() -> str:
+    from erebus.fieldguide import methodology_primer
+    return methodology_primer()
+
+
 SYSTEM_PROMPT = (
     "You are Erebus, an assistant for an operator's own authorized security-research "
     "lab. Answer concisely and technically, grounded in the engagement data provided. "
@@ -30,7 +35,8 @@ SYSTEM_PROMPT = (
     "An 'OSINT resources' section lists the OSINT Framework catalog categories and, "
     "per known target, matching resources by input type. Use it to recommend "
     "concrete OSINT resources (by name) and the matching `auxiliary/gather/*` "
-    "modules; prefer passive+free ones and say when a resource needs registration."
+    "modules; prefer passive+free ones and say when a resource needs registration.\n\n"
+    + _methodology()
 )
 
 

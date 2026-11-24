@@ -485,3 +485,12 @@ def test_dns_returns_report(monkeypatch):
         assert r.status_code == 200
         assert r.json()["domain"] == "example.com"
         assert r.json()["sections"][0]["key"] == "ns"
+
+
+def test_wiki_is_open_and_cited():
+    with _client(Framework()) as c:
+        r = c.get("/wiki")
+        assert r.status_code == 200
+        j = r.json()
+        assert j["pages"] and j["source"]["author"]
+        assert all(p.get("slug") and p.get("sections") for p in j["pages"])
