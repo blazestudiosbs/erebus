@@ -12,6 +12,7 @@ Scope and posture (read before extending):
 """
 from __future__ import annotations
 
+from .disclosure import Advisory, advisory_from_crash, render_advisory
 from .fuzz import (
     CrashInput,
     FuzzResult,
@@ -41,4 +42,5 @@ __all__ = [
     "CrashAnalysis", "RootCauseBucket", "parse_debugger", "stack_hash",
     "classify_exploitability", "reproduce_crash", "bucket_by_root_cause", "build_gdb_argv",
     "render_poc", "write_poc",
+    "Advisory", "advisory_from_crash", "render_advisory",
 ]

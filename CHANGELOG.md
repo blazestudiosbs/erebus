@@ -5,6 +5,13 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Coordinated-disclosure advisory drafting (researcher role)**: `research/disclosure.py`
+  renders a responsible-disclosure **advisory draft** (Markdown) from a candidate
+  vulnerability — summary, affected/fixed versions, severity, CWE, reproduction, and a
+  disclosure **timeline** with a planned public-disclosure date from a configurable
+  embargo (default 90 days). `advisory_from_crash` pre-fills severity, summary and the
+  repro pointer straight from a triaged `CrashAnalysis`. It is disclosure paperwork — it
+  contains no exploit, and severity is the triage label, not a CVSS score.
 - **PoC reproduction-harness scaffold (researcher role)**: `research/poc.py` turns a
   triaged `CrashAnalysis` into a standalone, parseable **reproduction harness** — a
   script that re-runs the target against the crashing input *inside `erebus.sandbox`*
