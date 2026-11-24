@@ -88,6 +88,8 @@
   .scope-ta:focus{ border-color:var(--accent); }
   .btnrow{ display:flex; gap:9px; flex-wrap:wrap; margin-top:10px; align-items:center; }
   .btn{ background:#1a1030; color:var(--accent); border:1px solid #3a2d55; border-radius:9px; padding:9px 15px; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .btn.sm{ padding:3px 10px; font-size:11px; border-radius:6px; }
+  .btn.sm:hover{ border-color:#ff5c7a; color:#ff8fa3; }
   .btn:hover{ background:#241640; } .btn:disabled{ opacity:.5; cursor:default; }
   .btn.sec{ background:transparent; color:#9a92b8; }
   .btn.sec:hover{ background:rgba(26,16,48,0.6); }
@@ -195,7 +197,7 @@
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Jobs</span><span>Research</span><span>Reports</span><span>Notes</span><span>Terminal</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Jobs</span><span>Pivots</span><span>Creds</span><span>Research</span><span>Reports</span><span>Notes</span><span>Terminal</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -259,6 +261,20 @@
         <h2>Jobs</h2>
         <p class="psub">Every module run, newest first &mdash; survives reconnects and restarts. A run left open when the server stopped shows as <b>interrupted</b>.</p>
         <div id="jobs-list"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="view-panel" id="pivotsview" style="display:none">
+      <div class="pwrap">
+        <h2>Pivots</h2>
+        <p class="psub">Active port-forwards. Point a scanner at <b>127.0.0.1:&lt;local&gt;</b> to reach the downstream. Every forward is scope-checked before it binds.</p>
+        <div id="pivots-list"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="view-panel" id="credsview" style="display:none">
+      <div class="pwrap">
+        <h2>Credentials</h2>
+        <p class="psub">Discovered credentials. Secret values are <b>never</b> sent to the browser &mdash; stored locally, shown here as <code>set</code>.</p>
+        <div id="creds-list"><div class="empty">loading&hellip;</div></div>
       </div>
     </div>
     <div class="view-panel" id="researchview" style="display:none">
@@ -352,7 +368,7 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Jobs:'jobsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Jobs:'jobsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   var curView='Flow', pollTimer=null;
   function setView(name){
     if(name!=='Flow' && !PANELS[name]) return;
@@ -368,6 +384,8 @@
     else if(name==='Modules'){ loadModules(); }
     else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
     else if(name==='Jobs'){ loadJobs(); pollTimer=setInterval(loadJobs,3000); }
+    else if(name==='Pivots'){ loadPivots(); pollTimer=setInterval(loadPivots,3000); }
+    else if(name==='Creds'){ loadCreds(); pollTimer=setInterval(loadCreds,5000); }
     else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
     else if(name==='Reports'){ repStatus(''); }
     else if(name==='Notes'){ loadNotes(); }
@@ -381,6 +399,8 @@
   function authH(){ return {'Content-Type':'application/json','Authorization':'Bearer '+window.EREBUS_TOKEN}; }
   function offlineMsg(fn){ fn('not connected to a live server - run  erebus console --serve  and open the printed URL','#ff9d2e'); }
   function apiPost(path,body){ return fetch(path,{method:'POST',headers:authH(),body:JSON.stringify(body)})
+    .then(function(r){ return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};},function(){return {ok:r.ok,status:r.status,j:{}};}); }); }
+  function apiDelete(path){ return fetch(path,{method:'DELETE',headers:authH()})
     .then(function(r){ return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};},function(){return {ok:r.ok,status:r.status,j:{}};}); }); }
 
   // ---- scope / guardrails ----------------------------------------------
@@ -535,6 +555,38 @@
           +'<td>'+jobDur(j)+'</td><td class="jmut">'+when+'</td></tr>'; }).join('')
       +'</tbody></table>'; }
 
+  // ---- Pivots tab (active port-forwards) -------------------------------
+  function loadPivots(){ fetch('pivots',{cache:'no-store'}).then(function(r){return r.json();}).then(renderPivots)
+    .catch(function(){ var b=document.getElementById('pivots-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function renderPivots(d){ var box=document.getElementById('pivots-list'); if(!box) return;
+    var ps=(d.pivots||[]);
+    if(!ps.length){ box.innerHTML='<div class="empty">no active pivots - open one via POST /pivots (scope-gated on the downstream)</div>'; return; }
+    box.innerHTML='<table class="jtbl"><thead><tr><th>#</th><th>local</th><th></th><th>downstream</th><th>via</th><th>conns</th><th></th></tr></thead><tbody>'
+      +ps.map(function(p){
+        return '<tr><td class="jnum">'+p.id+'</td><td>'+escHtml(p.lhost+':'+p.lport)+'</td>'
+          +'<td class="jmut">&rarr;</td><td>'+escHtml(p.rhost+':'+p.rport)+'</td>'
+          +'<td><span class="jbadge" style="color:#4db5ff;border-color:#4db5ff">'+escHtml(p.via)+'</span></td>'
+          +'<td>'+(p.conns||0)+'</td>'
+          +'<td>'+(hasTok()?('<button class="btn sm" data-pid="'+p.id+'">close</button>'):'')+'</td></tr>'; }).join('')
+      +'</tbody></table>';
+    var btns=box.querySelectorAll('button[data-pid]');
+    for(var i=0;i<btns.length;i++){ (function(el){ el.onclick=function(){
+      el.disabled=true; apiDelete('pivots/'+el.getAttribute('data-pid')).then(loadPivots); }; })(btns[i]); } }
+
+  // ---- Creds tab (discovered credentials; secrets redacted) ------------
+  function loadCreds(){ fetch('credentials',{cache:'no-store'}).then(function(r){return r.json();}).then(renderCreds)
+    .catch(function(){ var b=document.getElementById('creds-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function renderCreds(d){ var box=document.getElementById('creds-list'); if(!box) return;
+    var cs=(d.credentials||[]);
+    if(!cs.length){ box.innerHTML='<div class="empty">no credentials yet - run post/linux_creds or post/windows_creds on a session</div>'; return; }
+    box.innerHTML='<table class="jtbl"><thead><tr><th>host</th><th>service</th><th>username</th><th>kind</th><th>secret</th><th>source</th></tr></thead><tbody>'
+      +cs.map(function(c){
+        var sec=c.has_secret?'<span class="jbadge" style="color:#36d399;border-color:#36d399">set</span>':'<span class="jmut">-</span>';
+        return '<tr><td>'+escHtml(c.host||'')+(c.port?(':'+c.port):'')+'</td><td>'+escHtml(c.service||'')+'</td>'
+          +'<td>'+escHtml(c.username||'')+'</td><td>'+escHtml(c.kind||'')+'</td>'
+          +'<td>'+sec+'</td><td class="jmut">'+escHtml(c.source||'')+'</td></tr>'; }).join('')
+      +'</tbody></table>'; }
+
   // ---- Notes tab (living, persisted notepad) ---------------------------
   var notesTimer=null, notesLoaded=false;
   function notesStatus(msg,cls){ var st=document.getElementById('notes-status'), dt=document.getElementById('notes-dot');
@@ -631,7 +683,9 @@
   window.__ev=function(m){ var t=(m&&m.type)||'';
     if(t.indexOf('scope')>=0){ loadScope(); }
     if(curView==='Findings' && (t.indexOf('finding')>=0||t.indexOf('module')>=0)){ loadFindings(); }
-    if(curView==='Jobs' && t.indexOf('module')>=0){ loadJobs(); } };
+    if(curView==='Jobs' && t.indexOf('module')>=0){ loadJobs(); }
+    if(curView==='Pivots' && t.indexOf('pivot')>=0){ loadPivots(); }
+    if(curView==='Creds' && (t.indexOf('cred')>=0||t.indexOf('module')>=0)){ loadCreds(); } };
 
   // ---- copilot (floating widget, persistent across all tabs) ---------------
   function escHtml(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
