@@ -419,6 +419,22 @@ class EreConsole(cmd.Cmd):
             epss = f" EPSS={r['epss']:.2f}" if r["epss"] is not None else ""
             print(f"  {r['id']:16} {r['severity'] or '-':9} CVSS={r['cvss']}{epss}{kev}")
 
+    def do_attack(self, arg: str) -> None:
+        """attack  — ATT&CK coverage matrix: what the modules cover vs what's been run."""
+        from .attackmatrix import build_attack_matrix
+        m = build_attack_matrix(self.fw.loader, self.fw.store)
+        s = m["stats"]
+        print(col(f"◆ ATT&CK coverage — {s['techniques_covered']} technique(s) across "
+                  f"{s['tactics_touched']} tactic(s); {s['techniques_exercised']} exercised",
+                  "accent"))
+        for tac in m["tactics"]:
+            print(col(f"  {tac['tactic']}  ({tac['exercised']}/{len(tac['techniques'])} "
+                      f"exercised)", "info"))
+            for e in tac["techniques"]:
+                mark = (col("●", "good") if e["exercised"]
+                        else (col("○", "dim") if e["covered"] else col("·", "dim")))
+                print(f"    {mark} {e['id']:10} {e['name']}")
+
     def do_ask(self, arg: str) -> None:
         """ask <question>  — ask the LLM copilot about the current engagement."""
         import os

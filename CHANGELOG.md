@@ -5,6 +5,15 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **ATT&CK coverage matrix (platform roadmap Phase 4)**: a purple-team view over the
+  module catalogue. `erebus/attackmatrix.py` reads every module's declared `attack`
+  technique tags (capability) against job history and findings (exercised) and groups
+  them by MITRE ATT&CK tactic in the standard order — showing, per technique, which
+  modules cover it and whether it has actually been run. A new **ATT&CK** dashboard tab
+  renders it Navigator-style (tactics as columns, techniques as cells; green = exercised,
+  dim = covered-not-run), plus a console `attack` command and a read `GET /attack`
+  endpoint. The technique→tactic/name maps are the single bundled subset in
+  `erebus/reporting/attack.py` (extended with the techniques Erebus's own modules use).
 - **Operations dashboard tab (platform roadmap Phase 3, part 4)**: a new **Ops** tab in
   the 3D cockpit completes the engagement lifecycle in the UI. It shows operation stat
   tiles, the current op with its scope snapshot, the list of all operations, and a live

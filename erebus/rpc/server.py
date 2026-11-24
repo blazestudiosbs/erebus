@@ -184,6 +184,13 @@ def create_app(framework: Any, token: str | None = None,
             })
         return {"modules": out}
 
+    @app.get("/attack")
+    async def attack_matrix() -> dict[str, Any]:
+        """ATT&CK coverage matrix: module technique tags (capability) vs job
+        history and findings (exercised), grouped by tactic."""
+        from ..attackmatrix import build_attack_matrix
+        return build_attack_matrix(framework.loader, framework.store)
+
     @app.get("/hosts")
     async def hosts() -> dict[str, Any]:
         return {"hosts": _rows(framework.store.hosts())}

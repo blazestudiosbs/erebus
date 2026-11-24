@@ -343,13 +343,28 @@
   .hf-reach .r .v{ color:#6f6690; }
   .ops-actions{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 0; }
   .ops-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+  .atk-matrix{ display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; }
+  .atk-col{ flex:1 1 150px; min-width:140px; max-width:210px; }
+  .atk-head{ font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#8a81ad;
+    padding:4px 6px; border-bottom:1px solid #2a2340; margin-bottom:6px; display:flex;
+    justify-content:space-between; align-items:center; }
+  .atk-cnt{ color:#6f6690; font-size:10px; font-family:ui-monospace,monospace; }
+  .atk-cell{ border-radius:7px; padding:6px 8px; margin-bottom:5px; border:1px solid #2a2340;
+    background:rgba(20,16,34,0.6); }
+  .atk-cell .atk-id{ display:block; font-family:ui-monospace,monospace; font-size:10px; color:#9a92bd; }
+  .atk-cell .atk-nm{ display:block; font-size:11px; color:#cfc8ee; line-height:1.25; }
+  .atk-cell.exercised{ border-color:#2f7d53; background:linear-gradient(180deg,#143524,#0f241a); }
+  .atk-cell.exercised .atk-nm{ color:#8affc0; }
+  .atk-cell.covered{ border-color:#3a2d55; background:linear-gradient(180deg,#1a1430,#140f26); }
+  .atk-leg{ color:#6f6690; white-space:nowrap; }
+  .atk-leg .atk-cell{ display:inline-block; width:14px; height:11px; padding:0; margin:0 4px -1px 10px; }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Recon</span><span>Findings</span><span>OSINT</span><span>Homefield</span><span>Access</span><span>Jobs</span><span>Research</span><span>Ops</span><span>Report</span><span>Guide</span><span>Console</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Recon</span><span>Findings</span><span>OSINT</span><span>Homefield</span><span>Access</span><span>Jobs</span><span>Research</span><span>ATT&amp;CK</span><span>Ops</span><span>Report</span><span>Guide</span><span>Console</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -498,6 +513,14 @@
         <div id="research-body"><div class="empty">loading&hellip;</div></div>
       </div>
     </div>
+    <div class="view-panel" id="attackview" style="display:none">
+      <div class="pwrap" style="max-width:1200px">
+        <h2>ATT&amp;CK coverage</h2>
+        <p class="psub">What the loaded modules <em>can</em> do (capability) against what has actually been <em>run</em> (exercised), mapped to MITRE ATT&amp;CK tactics &mdash; a purple-team read on the engagement. <span class="atk-leg"><span class="atk-cell exercised"></span>exercised<span class="atk-cell covered"></span>covered, not run</span></p>
+        <div class="tiles" id="atk-tiles" style="margin-bottom:16px"></div>
+        <div id="atk-matrix" class="atk-matrix"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
     <div class="view-panel" id="opsview" style="display:none">
       <div class="pwrap">
         <h2>Operations</h2>
@@ -599,11 +622,11 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
   var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules','DNS'], Findings:['Findings'], OSINT:['OSINT'],
     Access:['Sessions','Pivots','Creds'], Homefield:['Homefield'], Jobs:['Jobs'], Research:['Research'],
-    Ops:['Ops'], Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
+    'ATT&CK':['ATT&CK'], Ops:['Ops'], Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
   var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
     Creds:'Credentials', Reports:'Export', Notes:'Notes' };
   var WRAP_SEL='.pwrap,.tgt-wrap,.notes-wrap,.term-wrap';
@@ -647,6 +670,7 @@
     else if(name==='Pivots'){ loadPivots(); pollTimer=setInterval(loadPivots,3000); }
     else if(name==='Creds'){ loadCreds(); pollTimer=setInterval(loadCreds,5000); }
     else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
+    else if(name==='ATT&CK'){ attackInit(); }
     else if(name==='Ops'){ opsInit(); }
     else if(name==='Reports'){ repStatus(''); }
     else if(name==='Notes'){ loadNotes(); }
@@ -990,6 +1014,35 @@
           +reach.map(function(r){ return '<span class="r">'+escHtml(r.host)+' <span class="v">via '+escHtml((r.via||[]).join(','))+'</span></span>'; }).join('')+'</div>'; }
         html+='</div>'; out.innerHTML=html;
       }).catch(function(){ out.innerHTML='<div class="empty">request failed</div>'; }); }
+
+  // ---- ATT&CK coverage matrix -----------------------------------------
+  function atkTile(k,v,color){ return '<div class="tile"><div class="k">'+escHtml(k)+'</div><div class="v"'+(color?(' style="color:'+color+'"'):'')+'>'+v+'</div></div>'; }
+  function attackInit(){
+    if(!hasTok()){ var m=document.getElementById('atk-matrix'); if(m) m.innerHTML='<div class="empty">connect to a live server first</div>'; return; }
+    fetch('attack',{headers:authH(),cache:'no-store'}).then(function(r){return r.json();}).then(attackRender)
+      .catch(function(){ var m=document.getElementById('atk-matrix'); if(m) m.innerHTML='<div class="empty">offline - connect to a live server</div>'; });
+  }
+  function attackRender(d){
+    var s=d.stats||{}, tiles=document.getElementById('atk-tiles');
+    if(tiles) tiles.innerHTML = atkTile('techniques covered', s.techniques_covered||0)
+      + atkTile('exercised', s.techniques_exercised||0, (s.techniques_exercised?'#5dffa5':'#6f6690'))
+      + atkTile('tactics touched', s.tactics_touched||0)
+      + atkTile('modules', s.modules||0);
+    var mx=document.getElementById('atk-matrix'), tactics=d.tactics||[];
+    if(!mx) return;
+    if(!tactics.length){ mx.innerHTML='<div class="empty">no ATT&amp;CK tags found</div>'; return; }
+    mx.innerHTML = tactics.map(function(t){
+      var cells=t.techniques.map(function(e){
+        var cls = e.exercised?'exercised':(e.covered?'covered':'seen');
+        var tip = e.id+' '+e.name+(e.modules&&e.modules.length?(' — '+e.modules.join(', ')):'')
+          +(e.jobs?(' ['+e.jobs+' run]'):'')+(e.findings?(' ['+e.findings+' finding]'):'');
+        return '<div class="atk-cell '+cls+'" title="'+escHtml(tip)+'"><span class="atk-id">'+escHtml(e.id)
+          +'</span><span class="atk-nm">'+escHtml(e.name)+'</span></div>';
+      }).join('');
+      return '<div class="atk-col"><div class="atk-head">'+escHtml(t.tactic)
+        +'<span class="atk-cnt">'+t.exercised+'/'+t.techniques.length+'</span></div>'+cells+'</div>';
+    }).join('');
+  }
 
   // ---- Operations tab (engagement lifecycle) --------------------------
   function opsNote(msg,color){ var n=document.getElementById('ops-note'); if(n){ n.textContent=msg||''; n.style.color=color||'#8a81ad'; } }

@@ -36,6 +36,8 @@ TECHNIQUE_TACTIC = {
     "T1555": "Credential Access", "T1557": "Credential Access", "T1212": "Credential Access",
     "T1046": "Discovery", "T1018": "Discovery", "T1083": "Discovery", "T1082": "Discovery",
     "T1087": "Discovery", "T1016": "Discovery", "T1049": "Discovery", "T1135": "Discovery",
+    "T1007": "Discovery", "T1033": "Discovery", "T1057": "Discovery",
+    "T1574": "Persistence", "T1593": "Reconnaissance",
     "T1210": "Lateral Movement", "T1021": "Lateral Movement", "T1550": "Lateral Movement",
     "T1560": "Collection", "T1005": "Collection", "T1114": "Collection",
     "T1071": "Command and Control", "T1571": "Command and Control",
@@ -47,10 +49,35 @@ TECHNIQUE_TACTIC = {
 }
 
 
+# Human-readable names for the techniques Erebus's own modules declare. Used by the
+# ATT&CK coverage matrix so cells read as more than a bare id; unknown ids fall back
+# to the id itself.
+TECHNIQUE_NAME = {
+    "T1003": "OS Credential Dumping", "T1007": "System Service Discovery",
+    "T1016": "System Network Configuration Discovery", "T1033": "System Owner/User Discovery",
+    "T1046": "Network Service Discovery", "T1057": "Process Discovery",
+    "T1068": "Exploitation for Privilege Escalation", "T1082": "System Information Discovery",
+    "T1110": "Brute Force", "T1134": "Access Token Manipulation",
+    "T1543": "Create or Modify System Process", "T1548": "Abuse Elevation Control Mechanism",
+    "T1552": "Unsecured Credentials", "T1555": "Credentials from Password Stores",
+    "T1571": "Non-Standard Port", "T1574": "Hijack Execution Flow",
+    "T1587": "Develop Capabilities", "T1588": "Obtain Capabilities",
+    "T1590": "Gather Victim Network Information", "T1592": "Gather Victim Host Information",
+    "T1593": "Search Open Websites/Domains", "T1595": "Active Scanning",
+    "T1596": "Search Open Technical Databases",
+}
+
+
 def tactic_of(technique: str) -> str:
     """The tactic for a technique id (sub-techniques inherit the parent); else Uncategorized."""
     base = str(technique or "").split(".", 1)[0].strip().upper()
     return TECHNIQUE_TACTIC.get(base, UNCATEGORIZED)
+
+
+def name_of(technique: str) -> str:
+    """A technique id's human-readable name (sub-techniques use the parent); else the id."""
+    base = str(technique or "").split(".", 1)[0].strip().upper()
+    return TECHNIQUE_NAME.get(base, base)
 
 
 def group_by_tactic(techniques: dict[str, int]) -> list[tuple[str, list[tuple[str, int]]]]:
