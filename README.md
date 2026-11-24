@@ -110,6 +110,8 @@ box needs read access (a PAT or a read-only deploy key). Restart
   `gather/searchsploit` — run the real tools and import results
 - `import/nmap`, `import/nuclei`, `import/searchsploit` — offline file importers
 - `gather/shodan_search` — passive Shodan (key from the vault)
+- `scanner/http_headers` — read-only HTTP security-header audit (HSTS/CSP/…) ·
+  `post/linux_persistence_audit` — read-only survey of the Linux autostart surface
 - `handler/reverse_tcp`, `handler/reverse_tcp_multi` — catch one / many in-scope shells
 
 Every module runs through `Framework.run()`, which enforces the scope gate.
