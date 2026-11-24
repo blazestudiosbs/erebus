@@ -4,6 +4,16 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Changed
+- Dashboard consolidated from 13 flat tabs to 9 grouped tabs with a 3D sub-nav:
+  Flow, Recon (Scope&Run + Modules), Findings, OSINT, Access (Sessions/Pivots/
+  Credentials), Jobs, Research, Report (Export + Notes), Console.
+- 3D visual treatment across the cockpit: raised/pressable buttons, keycap-style
+  tiles and cards, bevelled chips and colour swatches.
+- OSINT tab rebuilt as an interactive 3D list: expandable resource cards (opsec
+  glyph, API/registration/install badges, input/output/pricing/status grid),
+  open + copy-URL actions, and free/passive/API/live filter toggles.
+
 ### Added
 - Copilot LLM auto-detect: `POST /copilot/ollama/autodetect` finds a working
   raw-Ollama endpoint (accepts a candidate only if native `/api/tags` answers,
