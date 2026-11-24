@@ -290,3 +290,19 @@ def test_ws_replays_recent_events():
             replayed = ws.receive_json()
             assert replayed.get("replay") is True
             assert replayed["type"] == "finding.new"
+
+
+def test_sessions_endpoint_marks_live():
+    fw = _seed()
+    dead = fw.store.add_session("10.0.0.5", "shell", "tcp")   # persisted, not live
+    live = fw.store.add_session("10.0.0.9", "shell", "tcp")   # persisted + registered live
+
+    class _Live:
+        def __init__(self, sid: int) -> None:
+            self.id, self.host, self.alive = sid, "10.0.0.9", True
+    fw.sessions._live[live] = _Live(live)
+
+    with _client(fw) as c:
+        rows = {r["id"]: r for r in c.get("/sessions").json()["sessions"]}
+        assert rows[live]["live"] is True
+        assert rows[dead]["live"] is False

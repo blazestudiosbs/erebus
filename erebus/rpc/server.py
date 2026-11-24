@@ -173,7 +173,14 @@ def create_app(framework: Any, token: str | None = None,
 
     @app.get("/sessions")
     async def sessions() -> dict[str, Any]:
-        return {"sessions": _rows(framework.store.sessions())}
+        # mark which persisted sessions are still live (have an in-memory socket).
+        # read-only: the web API never runs commands on a session - interactive
+        # shell work stays in the local ereconsole (no OS shell over HTTP).
+        live_ids = {s.id for s in framework.sessions.live()}
+        rows = _rows(framework.store.sessions())
+        for r in rows:
+            r["live"] = (r.get("id") in live_ids) and not r.get("closed")
+        return {"sessions": rows}
 
     @app.get("/scope")
     async def scope_show() -> dict[str, Any]:
