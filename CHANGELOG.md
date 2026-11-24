@@ -5,6 +5,9 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- `gather/username_enum` (flagship OSINT automation): check a username across
+  many sites, WhatsMyName `wmn-data.json`-compatible, with a built-in starter list;
+  passive (not scope-gated).
 - Module scaffolder: `erebus module new <type>/<name>` writes a ready-to-edit
   skeleton to the private module path, `--from-osint "<tool>"` seeds it from a
   catalog entry (url/description/input->option). auxiliary/post only — refuses
