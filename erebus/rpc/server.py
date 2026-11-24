@@ -282,6 +282,8 @@ def create_app(framework: Any, token: str | None = None,
 
     @app.get("/research")
     async def research() -> dict[str, Any]:
+        import shutil
+
         from ..research.fuzz import FuzzRunner
         crashes = []
         for row in framework.store.findings():
@@ -292,9 +294,30 @@ def create_app(framework: Any, token: str | None = None,
                 crashes.append(r)
         try:
             afl = FuzzRunner().available()
-        except Exception:
+        except Exception:  # noqa: BLE001
             afl = False
-        return {"afl_available": afl, "crashes": crashes}
+        gdb = shutil.which("gdb") is not None
+        try:
+            from ..sandbox import available_backends
+            sandbox = len(available_backends()) > 0
+        except Exception:  # noqa: BLE001
+            sandbox = False
+        # the researcher FIND -> UNDERSTAND -> DISCLOSE loop (no exploit generation)
+        pipeline = [
+            {"stage": "Fuzz", "desc": "discover crashes (AFL++/libFuzzer)",
+             "ready": afl, "needs": "afl-fuzz"},
+            {"stage": "Reproduce & triage",
+             "desc": "re-run under gdb in the sandbox; dedup by stack hash",
+             "ready": gdb and sandbox, "needs": "gdb + sandbox (Docker)"},
+            {"stage": "Exploitability",
+             "desc": "crashwalk-style classification (read-only)", "ready": True, "needs": ""},
+            {"stage": "PoC harness",
+             "desc": "generate a sandbox reproduction harness", "ready": True, "needs": ""},
+            {"stage": "Disclosure",
+             "desc": "draft a coordinated-disclosure advisory", "ready": True, "needs": ""},
+        ]
+        return {"afl_available": afl, "gdb_available": gdb, "sandbox_available": sandbox,
+                "pipeline": pipeline, "crashes": crashes}
 
     @app.get("/report", dependencies=[Depends(require_token)])
     async def report(format: str = "html") -> Any:

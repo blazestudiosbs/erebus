@@ -5,6 +5,12 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Research dashboard surface (researcher role)**: the Research tab is now the
+  **vulnerability bench** — it renders the whole researcher loop as a pipeline
+  (fuzz → reproduce & triage → exploitability → PoC harness → coordinated disclosure)
+  with per-stage **tool-readiness** badges, and `GET /research` reports `gdb_available`,
+  `sandbox_available` and the pipeline alongside the crash/fuzz findings. Analysis only —
+  the copy makes clear re-execution always runs in the sandbox, never on the host.
 - **Coordinated-disclosure advisory drafting (researcher role)**: `research/disclosure.py`
   renders a responsible-disclosure **advisory draft** (Markdown) from a candidate
   vulnerability — summary, affected/fixed versions, severity, CWE, reproduction, and a
