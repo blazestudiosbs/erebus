@@ -392,7 +392,7 @@
       <label>API key (only if your server requires one)</label>
       <div class="cop-keyrow"><input id="cop-key" type="password" placeholder="paste key, then Save" autocomplete="off"/><button id="cop-key-save" class="cop-keybtn">Save</button></div>
       <div id="cop-key-out" class="cop-test-out"></div>
-      <button id="cop-test" class="cop-testbtn">Test connection</button>
+      <button id="cop-auto" class="cop-testbtn">Auto-detect</button><button id="cop-test" class="cop-testbtn">Test connection</button>
       <div id="cop-test-out" class="cop-test-out"></div>
     </div>
   </div>
@@ -833,7 +833,7 @@
     }).join('');
     b.scrollTop=b.scrollHeight;
   }
-  var COP_LS={p:'erebus_cop_provider', u:'erebus_cop_ollama_url', m:'erebus_cop_ollama_model'};
+  var COP_LS={p:'erebus_cop_provider', u:'erebus_cop_ollama_url', m:'erebus_cop_ollama_model', seen:'erebus_cop_ollama_seen'};
   function copCfg(){ var p='ollama', u='http://command-center:3000', m='llama3';
     try{ p=localStorage.getItem(COP_LS.p)||p; u=localStorage.getItem(COP_LS.u)||u; m=localStorage.getItem(COP_LS.m)||m; }catch(_){}
     return {provider:p, url:u, model:m}; }
@@ -849,8 +849,8 @@
       if(m) localStorage.setItem(COP_LS.m, m.value||''); }catch(_){}
     copSyncFields(); }
   function copOpen(show){ var pn=document.getElementById('cop-panel'); if(!pn) return;
-    pn.style.display=show?'flex':'none'; if(show){ copSyncFields(); if(copCfg().provider==='ollama'&&hasTok()) copLoadModels(false); copRender(); var inp=document.getElementById('cop-input'); if(inp) inp.focus(); } }
-  function askCopilot(q){
+    pn.style.display=show?'flex':'none'; if(show){ copSyncFields(); if(copCfg().provider==='ollama'&&hasTok()){ if(copSeen().length) copLoadModels(false); else copAutodetect(false); } copRender(); var inp=document.getElementById('cop-input'); if(inp) inp.focus(); } }
+  function askCopilot(q, _retried){
     var inp=document.getElementById('cop-input');
     var question=(typeof q==='string')?q:((inp&&inp.value)||'').trim();
     if(!hasTok()){ copTx.push({role:'err',text:'Connect to a live server first (run  erebus console --serve  and open the printed URL).'}); copRender(); return; }
@@ -870,6 +870,12 @@
           else if(/model|not found|no such/i.test(d)){ hint='  The server answered but rejected the model - hit Test connection and pick a model it lists.'; }
           else if(/returned HTTP/i.test(d)){ hint='  The server answered with an error - check the URL points at the raw Ollama API and the model exists (Test connection).'; }
           else { hint='  Could not reach '+cfg.url+' - is Ollama running and reachable from the server?'; } }
+        if(cfg.provider==='ollama' && res.status!==503 && !_retried){
+          copTx[at]={role:'bot', text:'auto-detecting a working endpoint\u2026'}; copRender();
+          copAutodetect(false, function(found){
+            if(found){ copTx.splice(at,1); askCopilot(question, true); }
+            else { copTx[at]={role:'err', text:d+hint}; copRender(); } });
+          return; }
         copTx[at]={role:'err', text:d+hint}; }
       copRender();
     }).catch(function(e){ copTx[at]={role:'err', text:'request failed: '+e}; copRender(); });
@@ -897,6 +903,39 @@
         if(showStatus&&out) out.innerHTML='<span class="err">'+escHtml(d)+'</span>'; }
     }).catch(function(e){ if(hint) hint.textContent=''; if(showStatus&&out) out.innerHTML='<span class="err">request failed: '+escHtml(String(e))+'</span>'; });
   }
+  function copSeen(){ try{ var v=JSON.parse(localStorage.getItem(COP_LS.seen)||'[]'); return Array.isArray(v)?v:[]; }catch(_){ return []; } }
+  function copRemember(url){ if(!url) return; try{ var l=copSeen().filter(function(u){return u!==url;}); l.unshift(url); localStorage.setItem(COP_LS.seen, JSON.stringify(l.slice(0,5))); }catch(_){} }
+  function copCandidates(){ var out=[], cfg=copCfg();
+    function add(u){ u=(u||'').replace(/\/+$/,''); if(u && out.indexOf(u)<0) out.push(u); }
+    add(cfg.url); copSeen().forEach(add);
+    // same host as the saved URL, but on the raw-Ollama port
+    try{ var mm=/^(https?:\/\/[^/:]+)(?::\d+)?/.exec(cfg.url); if(mm) add(mm[1]+':11434'); }catch(_){}
+    try{ var h=location.hostname; if(h) add('http://'+h+':11434'); }catch(_){}
+    add('http://msi:11434'); add('http://localhost:11434'); add('http://127.0.0.1:11434');
+    return out; }
+  var copAutoBusy=false;
+  function copAutodetect(showStatus, done){ var out=document.getElementById('cop-test-out'),
+      hint=document.getElementById('cop-model-hint');
+    if(!hasTok()){ if(showStatus&&out) out.innerHTML='<span class="err">connect to a live server first</span>'; if(done) done(false); return; }
+    if(copAutoBusy){ if(done) done(false); return; } copAutoBusy=true;
+    if(showStatus&&out) out.innerHTML='auto-detecting a working Ollama endpoint \u2026';
+    if(hint) hint.textContent='detecting\u2026';
+    apiPost('copilot/ollama/autodetect',{candidates:copCandidates()}).then(function(res){
+      copAutoBusy=false;
+      if(res.ok && res.j && res.j.ok && res.j.url){ var url=res.j.url, model=res.j.model||'', ms=res.j.models||[];
+        try{ localStorage.setItem(COP_LS.u,url); if(model) localStorage.setItem(COP_LS.m,model); }catch(_){}
+        copRemember(url);
+        var uEl=document.getElementById('cop-url'); if(uEl) uEl.value=url;
+        copSetModels(ms, model);
+        if(hint) hint.textContent=ms.length?('('+ms.length+' available)'):'';
+        if(showStatus&&out) out.innerHTML='<span class="ok">found</span> '+escHtml(url)+(model?(' \u00b7 '+escHtml(model)):'');
+        if(done) done(true);
+      } else { var d=(res.j&&res.j.detail)||((res.j&&res.j.ok===false)?'no raw-Ollama endpoint responded':('HTTP '+res.status));
+        if(hint) hint.textContent='';
+        if(showStatus&&out) out.innerHTML='<span class="err">'+escHtml(d)+'</span>'; if(done) done(false); }
+    }).catch(function(e){ copAutoBusy=false; if(hint) hint.textContent='';
+      if(showStatus&&out) out.innerHTML='<span class="err">request failed: '+escHtml(String(e))+'</span>'; if(done) done(false); });
+  }
   function copSaveKey(){ var k=document.getElementById('cop-key'), out=document.getElementById('cop-key-out');
     if(!hasTok()){ if(out) out.innerHTML='<span class="err">connect to a live server first</span>'; return; }
     var val=((k&&k.value)||'').trim();
@@ -915,6 +954,7 @@
     if(sel) sel.onchange=copSaveCfg;
     if(u) u.addEventListener('change', copSaveCfg);
     if(m) m.addEventListener('change', copSaveCfg);
+    var auto=document.getElementById('cop-auto'); if(auto) auto.onclick=function(){ copAutodetect(true); };
     var test=document.getElementById('cop-test'); if(test) test.onclick=function(){ copLoadModels(true); };
     var ksave=document.getElementById('cop-key-save'); if(ksave) ksave.onclick=copSaveKey;
     var kin=document.getElementById('cop-key'); if(kin) kin.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); copSaveKey(); } });
