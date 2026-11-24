@@ -5,6 +5,14 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Live pivot routes on the Homefield graph**: active forwards now show up in the
+  knowledge graph as ordered **operator → hop → … → target** chains. `graph.pivot_routes()`
+  derives them from the live forwards (nothing new stored), flagging each chain host that
+  is already a discovered estate host, and `GET /homefield` carries a `routes` array beside
+  the nodes/edges. The Homefield tab renders a "pivot routes — live tunnels" panel: each
+  route as coloured host pills (operator/hop/target) with its `via` badge and connection
+  count, and a known host pill links straight to its blast radius — so a tunnel reads as the
+  lateral-movement path it is. Derived/read-only, in keeping with the rest of the graph.
 - **Multi-hop pivot routes & console `pivot` command**: the pivot layer can now reach a
   downstream through an ordered **chain** of controlled hosts, not just one. `PivotManager.
   open_route(sessions, rhost, rport)` starts a socat/nc relay on every hop (last-first so

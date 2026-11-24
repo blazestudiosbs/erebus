@@ -451,6 +451,7 @@
         <p class="psub">The estate as a graph: hosts, services and accounts. A reused account is a single node linked to every host it unlocks &mdash; that's a lateral-movement path. Enter a host to see its blast radius.</p>
         <div class="tiles" id="hf-tiles" style="margin-bottom:16px"></div>
         <div class="card" style="margin-bottom:14px"><h4>credential reuse &mdash; pivot paths</h4><div id="hf-reuse"><div class="empty">loading&hellip;</div></div></div>
+        <div class="card" style="margin-bottom:14px"><h4>pivot routes &mdash; live tunnels</h4><div id="hf-routes"><div class="empty">loading&hellip;</div></div></div>
         <div class="osint-ctl">
           <input id="hf-host" placeholder="host for blast radius &mdash; e.g. 10.0.0.1" autocomplete="off" spellcheck="false" list="hf-hostlist"/>
           <datalist id="hf-hostlist"></datalist>
@@ -1038,6 +1039,31 @@
           .map(function(e){ return e.dst.replace(/^host:/,''); });
         return '<div class="hf-reuse-row"><span class="hf-acct">'+escHtml(acct)+'</span>'
           +'<span class="hf-arrow">unlocks &rarr;</span><span class="hf-hosts">'+escHtml(hosts.join(', '))+'</span></div>'; }).join(''); }
+    }
+    var rbox=document.getElementById('hf-routes'), routes=g.routes||[];
+    if(rbox){
+      if(!routes.length){ rbox.innerHTML='<div class="empty">no active pivots &mdash; open one from the Pivots tab or the console; live routes appear here as operator &rarr; hop &rarr; target chains</div>'; }
+      else {
+        var roleColor={operator:'#c08bff',hop:'#4db5ff',target:'#ff9d2e'};
+        rbox.innerHTML=routes.map(function(rt){
+          var pills=(rt.chain||[]).map(function(c){
+            var col=roleColor[c.role]||'#8a81ad';
+            var attr=c.known
+              ? ' data-host="'+escHtml(c.host)+'" title="click for blast radius" style="color:'+col+';border-color:'+col+';cursor:pointer"'
+              : ' style="color:'+col+';border-color:'+col+'"';
+            return '<span class="jbadge"'+attr+'>'+escHtml(c.host)+'</span>';
+          }).join(' <span class="jmut">&rarr;</span> ');
+          var isRoute=(rt.via||'').indexOf('route:')===0;
+          var vcol=isRoute?'#c08bff':'#4db5ff';
+          return '<div style="margin:7px 0;line-height:2.1">'+pills
+            +' <span class="jbadge" style="color:'+vcol+';border-color:'+vcol+'">'+escHtml(rt.via)+'</span>'
+            +' <span class="jmut">'+escHtml(rt.local)+' &middot; conns '+(rt.conns||0)+'</span></div>';
+        }).join('');
+        var kps=rbox.querySelectorAll('.jbadge[data-host]');
+        for(var i=0;i<kps.length;i++){ (function(el){ el.onclick=function(){
+          var hi=document.getElementById('hf-host');
+          if(hi){ hi.value=el.getAttribute('data-host'); hfBlast(); } }; })(kps[i]); }
+      }
     }
   }
   function hfBlast(){ var host=(document.getElementById('hf-host').value||'').trim(), out=document.getElementById('hf-blast');

@@ -114,6 +114,41 @@ def build_graph(store: Any, op_id: int | None = None) -> dict:
     return {"nodes": list(nodes.values()), "edges": edges, "stats": stats}
 
 
+def _known_hosts(store: Any) -> set:
+    return {str(dict(r).get("host") or "") for r in store.hosts() if dict(r).get("host")}
+
+
+def pivot_routes(store: Any, pivots: list) -> list:
+    """Overlay live pivot forwards/routes onto the estate as ordered chains.
+
+    Each entry walks ``operator -> hop... -> downstream``; every host in the chain
+    is flagged ``known`` when it is already a discovered estate host, so the UI can
+    tie a route back to its node (and its blast radius). Pure and derived - it adds
+    no tables and starts nothing; ``pivots`` is a list of ``Forward.as_dict()``.
+    """
+    known = _known_hosts(store)
+    out: list = []
+    for p in pivots or []:
+        rhost = str(p.get("rhost") or "")
+        hops = [str(h) for h in (p.get("hops") or [])]
+        chain: list = [{"host": "erebus", "role": "operator", "known": False}]
+        for h in hops:
+            chain.append({"host": h, "role": "hop", "known": h in known})
+        if rhost:
+            chain.append({"host": rhost, "role": "target", "known": rhost in known})
+        out.append({
+            "id": p.get("id"),
+            "via": str(p.get("via") or "direct"),
+            "conns": int(p.get("conns") or 0),
+            "status": str(p.get("status") or ""),
+            "local": f"{p.get('lhost', '')}:{p.get('lport', '')}",
+            "downstream": f"{rhost}:{p.get('rport', '')}",
+            "hops": hops,
+            "chain": chain,
+        })
+    return out
+
+
 def _accounts_on(store: Any, host: str) -> list:
     out = []
     for row in store.credentials():
