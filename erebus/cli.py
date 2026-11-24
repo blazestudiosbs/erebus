@@ -95,6 +95,64 @@ def _intel(args: argparse.Namespace) -> None:
             print(_fmt(r, store, short=True))
 
 
+def _report_fmt(args: argparse.Namespace) -> str:
+    out_l = str(args.out).lower()
+    if args.format:
+        return str(args.format)
+    if out_l.endswith(".md"):
+        return "md"
+    if out_l.endswith(".pdf"):
+        return "pdf"
+    return "html"
+
+
+def _report_op(args: argparse.Namespace, fmt: str) -> int:
+    """Report a single operation rebuilt from its sealed archive."""
+    import os
+    from pathlib import Path
+
+    from .reporting import archive, op_report
+    from .reporting import report as rpt
+
+    arc = Path(args.op).expanduser()
+    if not arc.is_file():
+        print(f"error: no archive at {args.op}")
+        return 2
+    if fmt == "pdf":
+        print("error: PDF is not available for --op reports; use a .md or .html --out")
+        return 2
+    # passphrase from the environment (for automation) or an interactive prompt —
+    # never on the command line, where it would show in the process list.
+    pw = os.environ.get("EREBUS_ARCHIVE_PASSPHRASE")
+    if not pw:
+        import getpass
+        try:
+            pw = getpass.getpass("archive passphrase: ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 2
+    if not pw:
+        print("error: empty passphrase")
+        return 2
+    try:
+        bundle = archive.unseal(arc.read_bytes(), pw)
+    except (OSError, archive.crypto.DecryptError) as exc:
+        print(f"error: cannot read archive: {exc}")
+        return 2
+    content = (op_report.render_markdown(bundle) if fmt == "md"
+               else op_report.render_html(bundle, theme=args.theme))
+    try:
+        path = rpt.write_report(args.out, content, overwrite=args.force)
+    except FileExistsError:
+        print(f"error: {args.out} exists; use --force to overwrite")
+        return 2
+    op = bundle.get("operation") or {}
+    tag = op.get("codename") or op.get("name") or "operation"
+    print(f"wrote {fmt} operation report: {path}  "
+          f"(op {tag}, {len(bundle.get('findings', []))} finding(s))")
+    return 0
+
+
 def _report(args: argparse.Namespace) -> int:
     from pathlib import Path
 
@@ -105,18 +163,17 @@ def _report(args: argparse.Namespace) -> int:
     if args.edition == "live":
         print("error: reporting is not available in the live edition")
         return 2
+    fmt = _report_fmt(args)
+
+    if args.op:
+        return _report_op(args, fmt)
+
+    if not args.store:
+        print("error: --store is required (or use --op ARCHIVE to report one operation)")
+        return 2
     if not Path(args.store).expanduser().is_file():
         print(f"error: no datastore at {args.store}")
         return 2
-    out_l = str(args.out).lower()
-    if args.format:
-        fmt = args.format
-    elif out_l.endswith(".md"):
-        fmt = "md"
-    elif out_l.endswith(".pdf"):
-        fmt = "pdf"
-    else:
-        fmt = "html"
     fw = Framework(store_path=str(Path(args.store).expanduser()))
     evidence = EvidenceStore(args.evidence_dir) if args.evidence_dir else None
     data = rpt.collect(fw.store, loader=fw.loader, evidence_store=evidence)
@@ -405,7 +462,11 @@ def main() -> None:
                      help="allow cross-origin reads from ORIGIN (repeatable)")
 
     rep = sub.add_parser("report", help="generate an HTML or Markdown report from a datastore")
-    rep.add_argument("--store", required=True, help="framework datastore file to report on")
+    rep.add_argument("--store", help="framework datastore file to report on (whole engagement)")
+    rep.add_argument("--op", metavar="ARCHIVE", default=None,
+                     help="report a single operation from its sealed archive "
+                          "(.md/.html only; passphrase via EREBUS_ARCHIVE_PASSPHRASE "
+                          "or an interactive prompt)")
     rep.add_argument("--out", required=True, metavar="FILE", help="report file to write")
     rep.add_argument("--format", choices=["html", "md", "pdf"], default=None,
                      help="default: md if --out ends in .md, else html")

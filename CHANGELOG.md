@@ -15,7 +15,9 @@ this project uses [Semantic Versioning](https://semver.org).
   artifacts with their revert hints, notes, and reproduction steps. Console
   `op report <out.md|out.html>` reports the current op from live data;
   `op report <archive.enc> <out>` unseals a sealed archive (passphrase prompted) and
-  reports from it.
+  reports from it. CLI: `erebus report --op <archive.enc> --out <file.md|.html>` does the
+  same from the shell (passphrase via `EREBUS_ARCHIVE_PASSPHRASE` or an interactive
+  prompt — never on the command line).
 - **ATT&CK coverage matrix (platform roadmap Phase 4)**: a purple-team view over the
   module catalogue. `erebus/attackmatrix.py` reads every module's declared `attack`
   technique tags (capability) against job history and findings (exercised) and groups
