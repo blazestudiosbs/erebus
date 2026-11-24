@@ -73,6 +73,146 @@ class Framework:
             self.activity_log.attach(self.events)
         self.loader.discover()
 
+    # --- engagement lifecycle (operations) ---------------------------------
+    def op_new(self, name: str, codename: str = "") -> int:
+        """Open a named operation, snapshotting the current scope, and make it current.
+
+        New records (jobs, findings, sessions, credentials, evidence) are tagged
+        with this operation's id automatically by the store until ``op_end``.
+        """
+        import json as _json
+
+        snapshot = _json.dumps(list(self.scope.show()))
+        op_id = self.store.create_operation(name, codename=codename, scope=snapshot)
+        self.events.publish(Event(ev.OP_START, {
+            "op": op_id, "name": name, "codename": codename,
+        }))
+        return op_id
+
+    def op_end(self) -> int | None:
+        """Close the current operation, if any. Returns the ended op id."""
+        current = self.store.current_operation()
+        if current is None:
+            return None
+        op_id = int(current["id"])
+        self.store.end_operation(op_id)
+        self.events.publish(Event(ev.OP_END, {
+            "op": op_id, "name": current["name"],
+        }))
+        return op_id
+
+    def current_op(self) -> Any:
+        """The active operation row, or None when no operation is open."""
+        return self.store.current_operation()
+
+    def op_log_artifact(self, kind: str, descr: str, revert_hint: str = "") -> int:
+        """Record something the current op created (a test account, a dropped
+        file) so teardown lists it. Raises if no operation is open."""
+        current = self.store.current_operation()
+        if current is None:
+            raise RuntimeError("no operation open — start one with op_new()")
+        return self.store.add_op_artifact(int(current["id"]), kind, descr,
+                                          revert_hint=revert_hint)
+
+    def op_teardown_plan(self) -> dict[str, Any]:
+        """What a teardown of the current op would do, without doing it.
+
+        Erebus-side resources it opened (live sessions, port-forwards) are
+        closed automatically; target-side artifacts the operator logged are
+        listed for manual reversal — Erebus never touches a target to revert
+        them, and never touches a target's logs.
+        """
+        current = self.store.current_operation()
+        if current is None:
+            return {"op": None, "sessions": [], "forwards": [], "artifacts": []}
+        op_id = int(current["id"])
+        # live sessions whose stored row is tagged to this op
+        op_of_session = {int(r["id"]): r["op_id"] for r in self.store.sessions()}
+        sessions = [
+            {"id": s.id, "host": s.host, "port": s.port}
+            for s in self.sessions.live()
+            if op_of_session.get(s.id) == op_id
+        ]
+        # port-forwards are process-global and transient: all currently-open
+        # ones belong to the work in progress (one current op at a time)
+        forwards = [f.as_dict() for f in self.pivots.list()]
+        artifacts = [
+            dict(a) for a in self.store.op_artifacts(op_id) if not a["reverted"]
+        ]
+        return {"op": op_id, "sessions": sessions, "forwards": forwards,
+                "artifacts": artifacts}
+
+    def op_teardown(self, confirm: bool = False) -> dict[str, Any]:
+        """Close the current op's Erebus-side resources (sessions, forwards),
+        fully logged. Without ``confirm`` this only returns the plan.
+
+        Returns a summary: what was closed and which operator-logged artifacts
+        still need manual reversal. Target-side state is never auto-reverted.
+        """
+        plan = self.op_teardown_plan()
+        if plan["op"] is None or not confirm:
+            return {**plan, "executed": False}
+
+        closed_sessions: list[int] = []
+        for s in plan["sessions"]:
+            self.sessions.close(int(s["id"]))
+            closed_sessions.append(int(s["id"]))
+        closed_forwards: list[int] = []
+        for f in plan["forwards"]:
+            if self.pivots.close(int(f["id"])):
+                closed_forwards.append(int(f["id"]))
+
+        summary = {
+            "op": plan["op"],
+            "executed": True,
+            "closed_sessions": closed_sessions,
+            "closed_forwards": closed_forwards,
+            "pending_artifacts": plan["artifacts"],
+        }
+        self.events.publish(Event(ev.OP_TEARDOWN, {
+            "op": plan["op"],
+            "closed_sessions": closed_sessions,
+            "closed_forwards": closed_forwards,
+            "pending_artifacts": len(plan["artifacts"]),
+        }))
+        return summary
+
+    def op_archive(self, passphrase: str, path: str, op_id: int | None = None,
+                   notes_text: str = "") -> dict[str, Any]:
+        """Export an operation's logbook to an encrypted archive on disk.
+
+        An export, not a move: nothing is deleted and the audit trail stays.
+        Credential secret values are never written (redacted to "set"). Returns
+        a summary (path, size, sha256, record counts); the passphrase and any
+        secret value are never put in the summary or the event.
+        """
+        import hashlib
+        from pathlib import Path
+
+        from ..reporting.archive import build_op_archive, seal
+
+        target_op = op_id
+        if target_op is None:
+            current = self.store.current_operation()
+            if current is None:
+                raise RuntimeError("no operation open — pass op_id or open one")
+            target_op = int(current["id"])
+
+        bundle = build_op_archive(self.store, int(target_op), notes_text=notes_text)
+        blob = seal(bundle, passphrase)
+        out = Path(path).expanduser()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(blob)
+        digest = hashlib.sha256(blob).hexdigest()
+        counts = {k: len(bundle[k]) for k in
+                  ("findings", "jobs", "sessions", "evidence", "credentials", "artifacts")}
+        summary = {"op": int(target_op), "path": str(out), "bytes": len(blob),
+                   "sha256": digest, "records": counts}
+        self.events.publish(Event(ev.OP_ARCHIVE, {
+            "op": int(target_op), "path": str(out), "bytes": len(blob), "sha256": digest,
+        }))
+        return summary
+
     def use(self, key: str) -> Module:
         cls = self.loader.get(key)
         if not cls:

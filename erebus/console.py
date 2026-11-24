@@ -86,9 +86,11 @@ class EreConsole(cmd.Cmd):
 
     def _status(self) -> None:
         s = self.fw
+        op = s.current_op()
+        op_part = f"· op: {op['codename'] or op['name']} " if op is not None else ""
         line = (f"[ {s.config['edition']} · scope: {len(s.scope.show())} rule(s) "
                 f"· sessions: {len(s.sessions.live())} · jobs: {len(s.jobs())} "
-                f"· Tor: {'on' if s.config['tor'] else 'off'} ]")
+                f"{op_part}· Tor: {'on' if s.config['tor'] else 'off'} ]")
         print(col(line, "dim"))
 
     # --- commands ---
@@ -168,6 +170,148 @@ class EreConsole(cmd.Cmd):
         self._status()
 
     do_exploit = do_run
+
+    def _notes_text(self) -> str:
+        """The engagement notes file's content, if any (same path the RPC uses)."""
+        env = os.environ.get("EREBUS_NOTES")
+        path = env if env else os.path.join(os.path.expanduser("~/.erebus"), "notes.md")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                return fh.read()
+        except OSError:
+            return ""
+
+    def _op_counts(self, op_id: int) -> str:
+        """A one-line tally of what an operation has produced so far."""
+        st = self.fw.store
+        n_find = sum(1 for r in st.findings() if r["op_id"] == op_id)
+        n_cred = sum(1 for r in st.credentials() if r["op_id"] == op_id)
+        n_sess = sum(1 for r in st.sessions() if r["op_id"] == op_id)
+        n_jobs = sum(1 for r in st.jobs() if r["op_id"] == op_id)
+        return (f"{n_jobs} job(s) · {n_find} finding(s) · "
+                f"{n_sess} session(s) · {n_cred} credential(s)")
+
+    def do_op(self, arg: str) -> None:
+        """op [status] | op new <name> [codename] | op end | op list
+           op artifact <kind> <description> | op teardown [confirm]
+           op archive <path>
+        Wrap work as a named operation; new records are tagged to it."""
+        parts = shlex.split(arg)
+        verb = parts[0] if parts else "status"
+
+        if verb == "new":
+            if len(parts) < 2:
+                print("usage: op new <name> [codename]")
+                return
+            name = parts[1]
+            codename = " ".join(parts[2:])
+            op_id = self.fw.op_new(name, codename=codename)
+            label = codename or name
+            print(col(f"[+] operation #{op_id} '{label}' opened — "
+                      f"scope snapshotted, new records tagged to it", "good"))
+            return
+
+        if verb == "end":
+            ended = self.fw.op_end()
+            if ended is None:
+                print(col("  (no operation open)", "dim"))
+            else:
+                print(col(f"[+] operation #{ended} closed", "good"))
+            return
+
+        if verb == "list":
+            ops = self.fw.store.operations()
+            if not ops:
+                print(col("  (no operations — start one with: op new <name>)", "dim"))
+            for o in ops:
+                mark = col("●", "good") if o["status"] == "active" else col("○", "dim")
+                tag = o["codename"] or o["name"]
+                print(f"  {mark} #{o['id']:<3} {tag:24} {o['status']}")
+            return
+
+        if verb == "artifact":
+            if self.fw.current_op() is None:
+                print(col("  no operation open — start one with: op new <name>", "dim"))
+                return
+            if len(parts) < 3:
+                print("usage: op artifact <kind> <description>")
+                return
+            kind = parts[1]
+            descr = " ".join(parts[2:])
+            aid = self.fw.op_log_artifact(kind, descr)
+            print(col(f"[+] logged artifact #{aid} ({kind}) — teardown will list it "
+                      f"for manual reversal", "good"))
+            return
+
+        if verb == "teardown":
+            confirm = len(parts) > 1 and parts[1] == "confirm"
+            res = self.fw.op_teardown(confirm=confirm)
+            if res["op"] is None:
+                print(col("  no operation open", "dim"))
+                return
+            if not confirm:
+                print(col("◆ teardown plan (preview — add 'confirm' to execute)", "accent"))
+                print(col(f"  close {len(res['sessions'])} live session(s), "
+                          f"{len(res['forwards'])} port-forward(s)", "dim"))
+                if res["artifacts"]:
+                    print(col(f"  {len(res['artifacts'])} operator-logged artifact(s) "
+                              f"to revert BY HAND (Erebus won't touch targets):", "warn"))
+                    for a in res["artifacts"]:
+                        hint = f" — {a['revert_hint']}" if a["revert_hint"] else ""
+                        print(col(f"    · [{a['kind']}] {a['descr']}{hint}", "dim"))
+                return
+            print(col(f"[+] teardown: closed {len(res['closed_sessions'])} session(s), "
+                      f"{len(res['closed_forwards'])} forward(s)", "good"))
+            if res["pending_artifacts"]:
+                print(col(f"  [!] {len(res['pending_artifacts'])} artifact(s) still need "
+                          f"manual reversal (listed; targets untouched)", "warn"))
+            return
+
+        if verb == "archive":
+            if self.fw.current_op() is None:
+                print(col("  no operation open — start one with: op new <name>", "dim"))
+                return
+            if len(parts) < 2:
+                print("usage: op archive <path>")
+                return
+            import getpass
+            try:
+                pw = getpass.getpass("archive passphrase: ")
+                if pw != getpass.getpass("confirm passphrase: "):
+                    print(col("  passphrases did not match", "error"))
+                    return
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+            if not pw:
+                print(col("  empty passphrase — aborted", "error"))
+                return
+            try:
+                summary = self.fw.op_archive(pw, parts[1], notes_text=self._notes_text())
+            except (OSError, RuntimeError) as exc:
+                print(col(f"  archive failed: {exc}", "error"))
+                return
+            print(col(f"[+] archived op #{summary['op']} → {summary['path']} "
+                      f"({summary['bytes']} bytes, encrypted)", "good"))
+            print(col(f"  sha256: {summary['sha256']}", "dim"))
+            print(col(f"  records: {summary['records']}", "dim"))
+            return
+
+        if verb == "status":
+            op = self.fw.current_op()
+            if op is None:
+                print(col("  no operation open — start one with: op new <name>", "dim"))
+                return
+            tag = op["codename"] or op["name"]
+            print(col(f"◆ operation #{op['id']} — {tag}", "accent"))
+            if op["codename"] and op["name"] != op["codename"]:
+                print(col(f"  name: {op['name']}", "dim"))
+            print(col(f"  status: {op['status']}", "dim"))
+            print(col(f"  {self._op_counts(int(op['id']))}", "dim"))
+            return
+
+        print("usage: op [status | new <name> [codename] | end | list | "
+              "artifact <kind> <descr> | teardown [confirm] | archive <path>]")
 
     def do_scope(self, arg: str) -> None:
         """scope [show | allow <cidr> | load <file>]."""
@@ -274,6 +418,22 @@ class EreConsole(cmd.Cmd):
             kev = col(" KEV", "error") if r["kev"] else ""
             epss = f" EPSS={r['epss']:.2f}" if r["epss"] is not None else ""
             print(f"  {r['id']:16} {r['severity'] or '-':9} CVSS={r['cvss']}{epss}{kev}")
+
+    def do_attack(self, arg: str) -> None:
+        """attack  — ATT&CK coverage matrix: what the modules cover vs what's been run."""
+        from .attackmatrix import build_attack_matrix
+        m = build_attack_matrix(self.fw.loader, self.fw.store)
+        s = m["stats"]
+        print(col(f"◆ ATT&CK coverage — {s['techniques_covered']} technique(s) across "
+                  f"{s['tactics_touched']} tactic(s); {s['techniques_exercised']} exercised",
+                  "accent"))
+        for tac in m["tactics"]:
+            print(col(f"  {tac['tactic']}  ({tac['exercised']}/{len(tac['techniques'])} "
+                      f"exercised)", "info"))
+            for e in tac["techniques"]:
+                mark = (col("●", "good") if e["exercised"]
+                        else (col("○", "dim") if e["covered"] else col("·", "dim")))
+                print(f"    {mark} {e['id']:10} {e['name']}")
 
     def do_ask(self, arg: str) -> None:
         """ask <question>  — ask the LLM copilot about the current engagement."""

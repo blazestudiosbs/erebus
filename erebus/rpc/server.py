@@ -184,6 +184,13 @@ def create_app(framework: Any, token: str | None = None,
             })
         return {"modules": out}
 
+    @app.get("/attack")
+    async def attack_matrix() -> dict[str, Any]:
+        """ATT&CK coverage matrix: module technique tags (capability) vs job
+        history and findings (exercised), grouped by tactic."""
+        from ..attackmatrix import build_attack_matrix
+        return build_attack_matrix(framework.loader, framework.store)
+
     @app.get("/hosts")
     async def hosts() -> dict[str, Any]:
         return {"hosts": _rows(framework.store.hosts())}
@@ -365,6 +372,15 @@ def create_app(framework: Any, token: str | None = None,
             out.append(d)
         return {"credentials": out}
 
+    @app.get("/operations")
+    async def list_operations() -> dict[str, Any]:
+        """Engagements (operations): the named work units records are tagged to."""
+        current = framework.store.current_operation()
+        return {
+            "operations": _rows(framework.store.operations()),
+            "current": dict(current) if current is not None else None,
+        }
+
     @app.get("/osint/categories")
     async def osint_categories() -> dict[str, Any]:
         c = _osint_catalog()
@@ -450,6 +466,75 @@ def create_app(framework: Any, token: str | None = None,
         except ScopeError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from None
         return {"job": jid, "module": module.name}
+
+    @app.post("/operations", dependencies=[Depends(require_token)])
+    async def open_operation(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        name = str(payload.get("name", "")).strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="missing 'name'")
+        codename = str(payload.get("codename", "")).strip()
+        op_id = framework.op_new(name, codename=codename)
+        current = framework.store.current_operation()
+        return {"ok": True, "op": op_id,
+                "current": dict(current) if current is not None else None}
+
+    @app.post("/operations/end", dependencies=[Depends(require_token)])
+    async def close_operation() -> dict[str, Any]:
+        op_id = framework.op_end()
+        return {"ok": True, "ended": op_id}
+
+    @app.get("/operations/teardown", dependencies=[Depends(require_token)])
+    async def teardown_plan() -> dict[str, Any]:
+        """Preview: Erebus-side resources (sessions, forwards) a teardown would
+        close, plus operator-logged artifacts to revert by hand."""
+        return framework.op_teardown_plan()
+
+    @app.post("/operations/teardown", dependencies=[Depends(require_token)])
+    async def teardown_run(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        """Close the current op's sessions and port-forwards (logged). Target
+        state is never auto-reverted. Pass {"confirm": true} to execute."""
+        confirm = bool(payload.get("confirm", False))
+        return framework.op_teardown(confirm=confirm)
+
+    @app.post("/operations/artifact", dependencies=[Depends(require_token)])
+    async def log_artifact(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        kind = str(payload.get("kind", "")).strip()
+        descr = str(payload.get("descr", "")).strip()
+        if not kind or not descr:
+            raise HTTPException(status_code=400, detail="missing 'kind' or 'descr'")
+        revert_hint = str(payload.get("revert_hint", "")).strip()
+        try:
+            aid = framework.op_log_artifact(kind, descr, revert_hint=revert_hint)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        return {"ok": True, "artifact": aid}
+
+    @app.post("/operations/archive", dependencies=[Depends(require_token)])
+    async def archive_operation(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        """Export an op's logbook to an encrypted archive on disk. Credential
+        secret values are never written. The response carries no secrets."""
+        passphrase = str(payload.get("passphrase", ""))
+        path = str(payload.get("path", "")).strip()
+        if not passphrase or not path:
+            raise HTTPException(status_code=400, detail="missing 'passphrase' or 'path'")
+        op_id = payload.get("op_id")
+        try:
+            notes = _notes_path().read_text(encoding="utf-8")
+        except OSError:
+            notes = ""
+        try:
+            summary = framework.op_archive(
+                passphrase, path,
+                op_id=int(op_id) if op_id is not None else None,
+                notes_text=notes,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=f"write failed: {exc}") from None
+        return {"ok": True, **summary}
 
     @app.post("/scope/allow", dependencies=[Depends(require_token)])
     async def scope_allow(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006

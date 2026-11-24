@@ -22,6 +22,10 @@ EVIDENCE_ADDED = "evidence.added"
 CRED_FOUND = "cred.found"
 PIVOT_OPEN = "pivot.open"
 PIVOT_CLOSE = "pivot.close"
+OP_START = "op.start"
+OP_END = "op.end"
+OP_TEARDOWN = "op.teardown"
+OP_ARCHIVE = "op.archive"
 LOG = "log"
 
 

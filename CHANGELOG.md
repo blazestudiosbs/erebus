@@ -5,6 +5,52 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **ATT&CK coverage matrix (platform roadmap Phase 4)**: a purple-team view over the
+  module catalogue. `erebus/attackmatrix.py` reads every module's declared `attack`
+  technique tags (capability) against job history and findings (exercised) and groups
+  them by MITRE ATT&CK tactic in the standard order — showing, per technique, which
+  modules cover it and whether it has actually been run. A new **ATT&CK** dashboard tab
+  renders it Navigator-style (tactics as columns, techniques as cells; green = exercised,
+  dim = covered-not-run), plus a console `attack` command and a read `GET /attack`
+  endpoint. The technique→tactic/name maps are the single bundled subset in
+  `erebus/reporting/attack.py` (extended with the techniques Erebus's own modules use).
+- **Operations dashboard tab (platform roadmap Phase 3, part 4)**: a new **Ops** tab in
+  the 3D cockpit completes the engagement lifecycle in the UI. It shows operation stat
+  tiles, the current op with its scope snapshot, the list of all operations, and a live
+  teardown preview; and it drives the token-gated write path — open an op, end it, run
+  teardown, and archive to an encrypted file — reusing the existing tile/card/button
+  styling. Reads `/operations` and `/operations/teardown`; posts to `/operations`,
+  `/operations/end`, `/operations/teardown` and `/operations/archive`.
+- **Encrypted engagement archival (platform roadmap Phase 3, part 3)**: export an
+  operation's logbook — its record, findings, jobs, sessions, evidence metadata, logged
+  artifacts, discovered accounts and the engagement notes — to a single encrypted file
+  for long-term storage. Archival is an **export**: nothing is deleted and the audit
+  trail stays intact. Credential **secret values are never written** (redacted to `"set"`
+  as over the API). Encryption is stdlib-only (`erebus/crypto.py`): `scrypt` KDF with a
+  random salt, an HMAC-SHA256 counter-mode keystream, and **encrypt-then-MAC** with an
+  independent key — a wrong passphrase or any tampering fails closed before any plaintext
+  is produced. Console `op archive <path>` (passphrase prompted, confirmed); token-gated
+  `POST /operations/archive`. The summary and `op.archive` event carry the path, size and
+  SHA-256 — never the passphrase or a secret.
+- **Engagement teardown (platform roadmap Phase 3, part 2)**: a reversible, fully-logged
+  "leave the lab as you found it" step for an operation. Teardown closes the Erebus-side
+  resources the op opened — live sessions and port-forwards — recording what it closed
+  (`op.teardown` event). Target-side state is **never** auto-reverted and target logs are
+  never touched: artifacts the operator logs (`op artifact <kind> <descr>`, stored in a
+  new `op_artifacts` table) are **listed** for manual reversal, not executed. Console
+  `op teardown` (preview) / `op teardown confirm` (execute); token-gated `GET`/`POST
+  /operations/teardown` and `POST /operations/artifact`. This is engagement hygiene, not
+  anti-forensics.
+- **Engagement lifecycle — operations (platform roadmap Phase 3, part 1)**: work can
+  now be wrapped as a named **operation**. An `operations` table records id, name,
+  codename, a **scope snapshot** taken when the op opens, status and start/end times;
+  jobs, findings, sessions, credentials and evidence carry a nullable `op_id`. The
+  store stamps the current op onto every new record automatically (no module wiring,
+  same pattern as the Homefield graph), and the current op is persisted in a small
+  `settings` table so it survives a restart. Console verbs `op new <name> [codename]`,
+  `op status`, `op list` and `op end`, plus a current-op marker in the status line.
+  Served at `GET /operations` (read) with token-gated `POST /operations` and
+  `POST /operations/end`. Existing databases migrate in place (idempotent `ALTER`).
 - **Credential-attack modules (platform roadmap Phase 2)**: two active, scope-gated
   modules - `auxiliary/creds/spray` (lockout-safe password spray: one password across
   all users per round, with a delay) and `auxiliary/creds/reuse` (test known/stored
