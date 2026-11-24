@@ -241,6 +241,27 @@ def _doctor(args: object) -> int:
     return 0
 
 
+def _osint(args: argparse.Namespace) -> int:
+    from .osint import Catalog
+    c = Catalog()
+    if args.osint_cmd == "categories":
+        for name, n in c.categories():
+            print(f"{n:4}  {name}")
+        print(f"\n{len(c.all())} tools across {len(c.categories())} categories")
+        return 0
+    tools = c.search(args.query) if args.osint_cmd == "search" else c.by_category(args.category)
+    kw = {f: True for f in ("free", "api", "passive", "live") if getattr(args, f, False)}
+    tools = c.filter(tools, **kw)
+    for t in tools[:200]:
+        print(f"  {t.name} {t.markers}".rstrip())
+        meta = " · ".join(x for x in (t.category, t.input or None, t.opsec or None) if x)
+        print(f"      {meta}  {t.url}")
+    shown = min(len(tools), 200)
+    more = f" (showing {shown})" if len(tools) > 200 else ""
+    print(f"\n{len(tools)} tool(s){more}")
+    return 0
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
@@ -350,6 +371,19 @@ def main() -> None:
 
     sub.add_parser("doctor", help="preflight: check tools, deps, intel DB, workspace")
 
+    osint = sub.add_parser("osint", help="browse the OSINT Framework directory")
+    osub = osint.add_subparsers(dest="osint_cmd", required=True)
+    osub.add_parser("categories", help="list categories with tool counts")
+    os_s = osub.add_parser("search", help="search tools by keyword")
+    os_s.add_argument("query")
+    os_l = osub.add_parser("list", help="list tools in a category")
+    os_l.add_argument("category")
+    for sp in (os_s, os_l):
+        sp.add_argument("--free", action="store_true", help="only free tools")
+        sp.add_argument("--api", action="store_true", help="only tools with an API")
+        sp.add_argument("--passive", action="store_true", help="only passive-opsec tools")
+        sp.add_argument("--live", action="store_true", help="only live (not down/deprecated)")
+
     args = p.parse_args()
     if args.cmd == "intel":
         _intel(args)
@@ -367,6 +401,8 @@ def main() -> None:
         raise SystemExit(_update(args))
     elif args.cmd == "doctor":
         raise SystemExit(_doctor(args))
+    elif args.cmd == "osint":
+        raise SystemExit(_osint(args))
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve

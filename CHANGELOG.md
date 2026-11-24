@@ -4,6 +4,10 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Added
+- OSINT Framework directory ingested (`erebus/osint/`, vendored MIT `arf.json`,
+  1,171 tools / 33 categories) with an `erebus osint` CLI (categories/search/list,
+  `--free/--api/--passive/--live`).
 
 ## [0.2.0] — 2026-11-23
 ### Added
