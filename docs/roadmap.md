@@ -61,11 +61,16 @@ catalogue.
 
 ---
 
+## Follow-ups
+
+- ✅ **Per-operation reporting** that reads the archived logbook —
+  `erebus/reporting/op_report.py`, console `op report`. Markdown/HTML report scoped to
+  one operation, rebuilt from its (optionally encrypted) archive; secrets never appear.
+
 ## ⬜ Future / ideas
 Not yet scoped. Candidates that fit the research-platform framing and the
 guardrails:
 
-- Per-operation reporting that reads the archived logbook.
 - Deeper ATT&CK coverage (sub-technique granularity, data-source mapping).
 - Operation-aware filtering across the existing dashboard tabs.
 

@@ -181,6 +181,48 @@ class EreConsole(cmd.Cmd):
         except OSError:
             return ""
 
+    def _op_report(self, args: list[str]) -> None:
+        """op report <out.md|out.html>            — report the CURRENT op (live data)
+           op report <archive.enc> <out.md|.html> — report from a sealed archive"""
+        from .reporting import archive, op_report
+        from .reporting import report as rpt
+
+        if len(args) == 1:
+            out_path = args[0]
+            cur = self.fw.current_op()
+            if cur is None:
+                print(col("  no operation open — pass an archive, or open an op", "dim"))
+                return
+            bundle = archive.build_op_archive(self.fw.store, int(cur["id"]),
+                                              notes_text=self._notes_text())
+        elif len(args) == 2:
+            arc_path, out_path = args
+            import getpass
+            try:
+                pw = getpass.getpass("archive passphrase: ")
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+            try:
+                with open(os.path.expanduser(arc_path), "rb") as fh:
+                    blob = fh.read()
+                bundle = archive.unseal(blob, pw)
+            except (OSError, archive.crypto.DecryptError) as exc:
+                print(col(f"  cannot read archive: {exc}", "error"))
+                return
+        else:
+            print("usage: op report <out.md|out.html> | op report <archive.enc> <out>")
+            return
+
+        content = (op_report.render_html(bundle) if out_path.lower().endswith(".html")
+                   else op_report.render_markdown(bundle))
+        try:
+            path = rpt.write_report(out_path, content, overwrite=True)
+        except OSError as exc:
+            print(col(f"  write failed: {exc}", "error"))
+            return
+        print(col(f"[+] wrote operation report → {path}", "good"))
+
     def _op_counts(self, op_id: int) -> str:
         """A one-line tally of what an operation has produced so far."""
         st = self.fw.store
@@ -194,7 +236,7 @@ class EreConsole(cmd.Cmd):
     def do_op(self, arg: str) -> None:
         """op [status] | op new <name> [codename] | op end | op list
            op artifact <kind> <description> | op teardown [confirm]
-           op archive <path>
+           op archive <path> | op report <out> | op report <archive> <out>
         Wrap work as a named operation; new records are tagged to it."""
         parts = shlex.split(arg)
         verb = parts[0] if parts else "status"
@@ -297,6 +339,10 @@ class EreConsole(cmd.Cmd):
             print(col(f"  records: {summary['records']}", "dim"))
             return
 
+        if verb == "report":
+            self._op_report(parts[1:])
+            return
+
         if verb == "status":
             op = self.fw.current_op()
             if op is None:
@@ -311,7 +357,8 @@ class EreConsole(cmd.Cmd):
             return
 
         print("usage: op [status | new <name> [codename] | end | list | "
-              "artifact <kind> <descr> | teardown [confirm] | archive <path>]")
+              "artifact <kind> <descr> | teardown [confirm] | archive <path> | "
+              "report <out> | report <archive> <out>]")
 
     def do_scope(self, arg: str) -> None:
         """scope [show | allow <cidr> | load <file>]."""
