@@ -27,6 +27,8 @@ Copy `erebus/modules/auxiliary/scanner/portscan.py`. A module:
 
 Add a unit test under `tests/unit/`. Keep the `core/` package dependency-free (stdlib only).
 
+See **[docs/writing-a-module.md](docs/writing-a-module.md)** for the full module SDK (option kinds, scope-gating option names, post-exploitation sessions, private out-of-tree modules) and **[docs/architecture.md](docs/architecture.md)** for how the pieces fit.
+
 ## Commits / PRs
 
 One logical change per PR, with a clear description and passing CI.
