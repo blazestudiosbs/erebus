@@ -171,6 +171,22 @@ class EreConsole(cmd.Cmd):
 
     do_exploit = do_run
 
+    def do_check(self, arg: str) -> None:
+        """check  — run the selected module's vulnerability check (scope-gated)."""
+        m = self.module
+        if not m:
+            print("no module selected")
+            return
+        try:
+            result = self.fw.check(m)
+        except (OptionError, ScopeError) as e:
+            print(col(str(e), "error"))
+            return
+        val = getattr(result, "value", str(result))
+        colour = {"vulnerable": "good", "safe": "info",
+                  "unsupported": "warn"}.get(str(val), "dim")
+        print(col(f"  check: {val}", colour))
+
     def _notes_text(self) -> str:
         """The engagement notes file's content, if any (same path the RPC uses)."""
         env = os.environ.get("EREBUS_NOTES")

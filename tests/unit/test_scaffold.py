@@ -1,5 +1,6 @@
-"""Module scaffolder: renders valid modules, seeds from OSINT, refuses exploit,
-and generated modules load via the external-path loader."""
+"""Module scaffolder: renders valid modules, seeds from OSINT, emits an empty
+scope-gated exploit skeleton, refuses payload/encoder, and generated modules load
+via the external-path loader."""
 from __future__ import annotations
 
 import ast
@@ -7,6 +8,7 @@ import ast
 import pytest
 
 from erebus.core.loader import Loader
+from erebus.core.module_base import Exploit
 from erebus.osint import Catalog
 from erebus.scaffold import render_module, write_module
 
@@ -25,10 +27,32 @@ def test_render_post_uses_session():
     assert '"SESSION"' in code and "self.get_session()" in code
 
 
-def test_refuses_exploit_and_payload():
-    for bad in ("exploit/x", "payload/x", "encoder/x"):
+def test_refuses_payload_and_encoder_but_not_exploit():
+    for bad in ("payload/x", "encoder/x"):
         with pytest.raises(ValueError, match="does not generate"):
             render_module(bad)
+
+
+def test_render_exploit_is_empty_scope_gated_skeleton():
+    code = render_module("exploit/linux/demo", author="bruce")
+    ast.parse(code)                                     # parses
+    assert "class Demo(Exploit)" in code
+    assert "def check(self)" in code and "def exploit(self)" in code
+    assert 'OptionSpec("RHOSTS"' in code               # scope-gated target option
+    assert "not implemented" in code                   # empty skeleton, no real exploit
+    assert "Rank.MANUAL" in code
+    # the AI drafter never writes an exploit body — a draft is ignored for exploit
+    drafted = render_module("exploit/linux/demo", drafted_body="self.pwn()  # danger")
+    assert "self.pwn()" not in drafted
+
+
+def test_exploit_skeleton_loads_as_exploit_subclass(tmp_path, monkeypatch):
+    monkeypatch.setenv("EREBUS_MODULE_PATH", str(tmp_path))
+    write_module("exploit/linux/demo2", out_dir=tmp_path, author="bruce")
+    loader = Loader()
+    loader.discover()
+    hit = [(k, c) for k, c in loader.all() if k.endswith("linux/demo2")]
+    assert hit and issubclass(hit[0][1], Exploit)
 
 
 def test_bad_key():
