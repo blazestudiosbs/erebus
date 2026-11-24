@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import sys
 from typing import Any
@@ -275,16 +276,83 @@ def _module(args: argparse.Namespace) -> int:
             return 2
         tool = hits[0]
         print(f"seeding from: {tool.name} ({tool.url})")
+
+    drafted_body = None
+    if getattr(args, "draft", False):
+        drafted_body = _draft_body(args, tool)
+        if drafted_body is None:
+            print("  (drafting unavailable - writing the plain TODO stub instead)")
+
     try:
         path = write_module(args.key, out_dir=Path(args.out) if args.out else None,
-                            author=args.author, osint_tool=tool, force=args.force)
+                            author=args.author, osint_tool=tool, force=args.force,
+                            drafted_body=drafted_body)
     except (ValueError, FileExistsError) as exc:
         print(f"error: {exc}")
         return 2
     print(f"wrote {path}")
+    if drafted_body is not None:
+        print("NOTE: the run() body was AI-DRAFTED - review every line, confirm it is "
+              "passive and in-scope, and test it before trusting it.")
     print("It loads from your private module path (EREBUS_MODULE_PATH / ~/.erebus/"
           "modules). Edit run() to implement it, then restart ereconsole / --serve.")
     return 0
+
+
+def _draft_body(args: argparse.Namespace, tool: Any) -> str | None:
+    """Build an LLM connector and draft the run() body; None on any failure."""
+    from .connectors.llm import LLMConnector
+    from .connectors.vault import open_vault
+    from .drafting import DraftRejected, draft_run_body
+    from .scaffold import resolve_option
+
+    provider = (args.provider or "ollama").strip()
+    mtype = args.key.strip().strip("/").split("/")[0].lower()
+    is_post = mtype == "post"
+    option_name = "SESSION" if is_post else resolve_option(mtype, tool)[0]
+
+    try:
+        vault = open_vault()
+    except Exception:  # pragma: no cover - vault backend optional
+        vault = None
+    if vault is None:
+        print("  draft: no vault backend available for API keys")
+        return None
+
+    base_url = args.url or None
+    if provider == "ollama" and not base_url:
+        from .connectors.ollama_detect import NoEndpoint, autodetect
+        cands = []
+        env = os.environ.get("EREBUS_OLLAMA_URL", "")
+        if env:
+            cands.append(env)
+        cands += ["http://msi:11434", "http://localhost:11434", "http://127.0.0.1:11434"]
+        try:
+            base_url, model, _models, _tried = autodetect(vault, cands)
+            print(f"  draft: using {base_url} \u00b7 {model}")
+            args.model = args.model or model
+        except NoEndpoint:
+            print("  draft: could not auto-detect a local Ollama endpoint "
+                  "(set --url http://host:11434)")
+            return None
+        except Exception as exc:  # network off, etc.
+            print(f"  draft: endpoint detection failed ({exc})")
+            return None
+
+    try:
+        conn = LLMConnector(vault, provider=provider, model=args.model,
+                            base_url=base_url, timeout=120.0)
+    except Exception as exc:
+        print(f"  draft: {exc}")
+        return None
+
+    print("  draft: asking the model to fill run() \u2026")
+    try:
+        return draft_run_body(conn, key=args.key, option_name=option_name,
+                              is_post=is_post, osint_tool=tool)
+    except DraftRejected as exc:
+        print(f"  draft rejected: {exc}")
+        return None
 
 
 def main() -> None:
@@ -419,6 +487,14 @@ def main() -> None:
                       help="output dir (default: the private module path)")
     mnew.add_argument("--author", default="you")
     mnew.add_argument("--force", action="store_true", help="overwrite if the file exists")
+    mnew.add_argument("--draft", action="store_true",
+                      help="use the LLM copilot to draft the run() body (AI-DRAFTED, "
+                           "validated passive/read-only, never auto-run)")
+    mnew.add_argument("--provider", default="ollama",
+                      help="LLM provider for --draft: ollama (default), anthropic, openai")
+    mnew.add_argument("--model", default=None, help="model for --draft (optional)")
+    mnew.add_argument("--url", default=None,
+                      help="Ollama base URL for --draft (default: auto-detect)")
 
     args = p.parse_args()
     if args.cmd == "intel":
