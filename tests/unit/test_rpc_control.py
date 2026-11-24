@@ -347,3 +347,42 @@ def test_session_exec_requires_token():
     app = create_app(fw, token=TOKEN, enable_session_exec=True)
     with TestClient(app) as c:
         assert c.post("/sessions/1/cmd", json={"cmd": "id"}).status_code == 401
+
+
+def test_session_verbs_catalog_and_run():
+    from erebus.core.session_verbs import SESSION_VERBS
+    fw = _seed()
+    ran = {}
+
+    class _Live:
+        id, host, alive = 5, "10.0.0.9", True
+        def command(self, cmd, overall=8.0):   # noqa: ARG002
+            ran["cmd"] = cmd
+            return "bruce"
+    fw.sessions._live[5] = _Live()
+    with _client(fw) as c:                      # NB: no --enable-session-exec
+        cat = c.get("/sessions/verbs").json()["verbs"]
+        assert any(v["name"] == "whoami" for v in cat)
+        r = c.post("/sessions/5/verb", json={"verb": "whoami"}, headers=AUTH)
+        assert r.status_code == 200 and r.json()["output"] == "bruce"
+        # the fixed command for the verb ran verbatim (no caller input in it)
+        assert ran["cmd"] == SESSION_VERBS["whoami"][1]
+
+
+def test_session_verb_rejects_unknown():
+    fw = _seed()
+
+    class _Live:
+        id, host, alive = 5, "h", True
+        def command(self, cmd, overall=8.0):   # noqa: ARG002
+            raise AssertionError("must not run for an unknown verb")
+    fw.sessions._live[5] = _Live()
+    with _client(fw) as c:
+        r = c.post("/sessions/5/verb", json={"verb": "rm -rf /"}, headers=AUTH)
+        assert r.status_code == 400 and "unknown verb" in r.json()["detail"]
+
+
+def test_session_verb_requires_token():
+    fw = _seed()
+    with _client(fw) as c:
+        assert c.post("/sessions/1/verb", json={"verb": "whoami"}).status_code == 401
