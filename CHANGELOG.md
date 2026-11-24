@@ -5,6 +5,10 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- Module scaffolder: `erebus module new <type>/<name>` writes a ready-to-edit
+  skeleton to the private module path, `--from-osint "<tool>"` seeds it from a
+  catalog entry (url/description/input->option). auxiliary/post only — refuses
+  exploit/payload.
 - **CVSS score** on findings: new `cvss` column (with a migration for existing
   DBs), populated by `vulnmap` + the privesc kernel-CVE check from the intel DB,
   and shown in the HTML/PDF/Markdown reports and the dashboard finding detail.

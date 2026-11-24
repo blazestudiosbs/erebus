@@ -262,6 +262,31 @@ def _osint(args: argparse.Namespace) -> int:
     return 0
 
 
+def _module(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from .scaffold import write_module
+    tool = None
+    if args.from_osint:
+        from .osint import Catalog
+        hits = Catalog().search(args.from_osint)
+        if not hits:
+            print(f"error: no OSINT catalog tool matches {args.from_osint!r}")
+            return 2
+        tool = hits[0]
+        print(f"seeding from: {tool.name} ({tool.url})")
+    try:
+        path = write_module(args.key, out_dir=Path(args.out) if args.out else None,
+                            author=args.author, osint_tool=tool, force=args.force)
+    except (ValueError, FileExistsError) as exc:
+        print(f"error: {exc}")
+        return 2
+    print(f"wrote {path}")
+    print("It loads from your private module path (EREBUS_MODULE_PATH / ~/.erebus/"
+          "modules). Edit run() to implement it, then restart ereconsole / --serve.")
+    return 0
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="erebus", description="Erebus security research framework")
     p.add_argument("--version", action="version", version=f"erebus {__version__}")
@@ -384,6 +409,17 @@ def main() -> None:
         sp.add_argument("--passive", action="store_true", help="only passive-opsec tools")
         sp.add_argument("--live", action="store_true", help="only live (not down/deprecated)")
 
+    mod = sub.add_parser("module", help="scaffold a new module (auxiliary/post only)")
+    msub = mod.add_subparsers(dest="module_cmd", required=True)
+    mnew = msub.add_parser("new", help="write a module skeleton to the private module path")
+    mnew.add_argument("key", help="<type>/<name>, e.g. auxiliary/gather/foo or post/bar")
+    mnew.add_argument("--from-osint", default=None, metavar="TOOL",
+                      help="seed metadata from an OSINT Framework catalog tool (by name)")
+    mnew.add_argument("--out", default=None, metavar="DIR",
+                      help="output dir (default: the private module path)")
+    mnew.add_argument("--author", default="you")
+    mnew.add_argument("--force", action="store_true", help="overwrite if the file exists")
+
     args = p.parse_args()
     if args.cmd == "intel":
         _intel(args)
@@ -403,6 +439,8 @@ def main() -> None:
         raise SystemExit(_doctor(args))
     elif args.cmd == "osint":
         raise SystemExit(_osint(args))
+    elif args.cmd == "module":
+        raise SystemExit(_module(args))
     elif args.cmd == "rpc":
         from .core.framework import Framework
         from .rpc.server import serve
