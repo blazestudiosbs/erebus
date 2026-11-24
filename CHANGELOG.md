@@ -5,6 +5,11 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Operation-aware dashboard filtering**: a shared **operation** dropdown on the
+  Findings, Jobs, Sessions and Credentials tabs narrows each to a single engagement,
+  using the `op_id` those records already carry. The selection is global — it persists
+  as you move between tabs — and each tab shows an op-aware empty state when a filter
+  hides everything. Filtering is client-side; no new endpoints or data are exposed.
 - **Deeper ATT&CK coverage**: the coverage matrix now goes beyond base techniques.
   Each technique entry carries the specific **sub-techniques** observed (from module tags
   and findings, e.g. `T1595` → `.002`, `.003`) and its ATT&CK **detection data sources**
