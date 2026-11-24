@@ -398,3 +398,63 @@ def test_osint_endpoints():
         forr = c.get("/osint/for", params={"target": "caporia.co"}).json()
         assert forr["kind"] == "domain" and forr["total"] >= 1
         assert c.get("/osint/for", params={"target": ""}).status_code == 400
+
+
+# --- copilot LLM auto-detect ---------------------------------------------
+
+def test_pick_ollama_model_prefers_instruct_and_avoids_reasoning():
+    from erebus.rpc.server import _pick_ollama_model
+    assert _pick_ollama_model([]) == ""
+    # reasoning models are deprioritised vs a plain chat model
+    assert _pick_ollama_model(["qwen3:32b", "llama3.1:8b-instruct"]) == "llama3.1:8b-instruct"
+    assert _pick_ollama_model(["deepseek-r1:7b", "mistral:7b"]) == "mistral:7b"
+    # single option is returned as-is
+    assert _pick_ollama_model(["gemma2:9b"]) == "gemma2:9b"
+
+
+def test_autodetect_skips_proxy_and_picks_raw_ollama(monkeypatch):
+    from erebus.connectors import base as base_mod
+
+    def fake_get_json(self, path, secret_headers=None):  # noqa: ANN001
+        # Open WebUI / nginx proxy has no native /api/tags
+        if "proxy:3000" in self.base_url:
+            from erebus.connectors.base import ConnectorError
+            raise ConnectorError(f"{self.base_url}{path} returned HTTP 404")
+        if self.base_url.endswith("msi:11434") and path == "/api/tags":
+            return {"models": [{"name": "qwen3:32b"}, {"name": "llama3.1:8b-instruct"}]}
+        from erebus.connectors.base import ConnectorError
+        raise ConnectorError("no route")
+
+    monkeypatch.setattr(base_mod.Connector, "get_json", fake_get_json)
+    with _client(Framework()) as c:
+        r = c.post("/copilot/ollama/autodetect", headers=AUTH, json={
+            "candidates": ["http://proxy:3000", "http://msi:11434"],
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True
+        assert body["url"] == "http://msi:11434"
+        assert body["model"] == "llama3.1:8b-instruct"
+        assert "qwen3:32b" in body["models"]
+
+
+def test_autodetect_reports_failure_when_nothing_responds(monkeypatch):
+    from erebus.connectors import base as base_mod
+
+    def fake_get_json(self, path, secret_headers=None):  # noqa: ANN001
+        from erebus.connectors.base import ConnectorError
+        raise ConnectorError("unreachable")
+
+    monkeypatch.setattr(base_mod.Connector, "get_json", fake_get_json)
+    with _client(Framework()) as c:
+        r = c.post("/copilot/ollama/autodetect", headers=AUTH, json={
+            "candidates": ["http://nope:11434"],
+        })
+        assert r.status_code == 200
+        assert r.json()["ok"] is False
+
+
+def test_autodetect_requires_candidates():
+    with _client(Framework()) as c:
+        r = c.post("/copilot/ollama/autodetect", headers=AUTH, json={"candidates": []})
+        assert r.status_code == 400
