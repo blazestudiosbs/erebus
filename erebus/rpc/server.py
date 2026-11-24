@@ -476,6 +476,32 @@ def create_app(framework: Any, token: str | None = None,
         op_id = framework.op_end()
         return {"ok": True, "ended": op_id}
 
+    @app.get("/operations/teardown", dependencies=[Depends(require_token)])
+    async def teardown_plan() -> dict[str, Any]:
+        """Preview: Erebus-side resources (sessions, forwards) a teardown would
+        close, plus operator-logged artifacts to revert by hand."""
+        return framework.op_teardown_plan()
+
+    @app.post("/operations/teardown", dependencies=[Depends(require_token)])
+    async def teardown_run(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        """Close the current op's sessions and port-forwards (logged). Target
+        state is never auto-reverted. Pass {"confirm": true} to execute."""
+        confirm = bool(payload.get("confirm", False))
+        return framework.op_teardown(confirm=confirm)
+
+    @app.post("/operations/artifact", dependencies=[Depends(require_token)])
+    async def log_artifact(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        kind = str(payload.get("kind", "")).strip()
+        descr = str(payload.get("descr", "")).strip()
+        if not kind or not descr:
+            raise HTTPException(status_code=400, detail="missing 'kind' or 'descr'")
+        revert_hint = str(payload.get("revert_hint", "")).strip()
+        try:
+            aid = framework.op_log_artifact(kind, descr, revert_hint=revert_hint)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        return {"ok": True, "artifact": aid}
+
     @app.post("/scope/allow", dependencies=[Depends(require_token)])
     async def scope_allow(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
         target = str(payload.get("target", "")).strip()

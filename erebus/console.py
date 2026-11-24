@@ -183,6 +183,7 @@ class EreConsole(cmd.Cmd):
 
     def do_op(self, arg: str) -> None:
         """op [status] | op new <name> [codename] | op end | op list
+           op artifact <kind> <description> | op teardown [confirm]
         Wrap work as a named operation; new records are tagged to it."""
         parts = shlex.split(arg)
         verb = parts[0] if parts else "status"
@@ -217,6 +218,44 @@ class EreConsole(cmd.Cmd):
                 print(f"  {mark} #{o['id']:<3} {tag:24} {o['status']}")
             return
 
+        if verb == "artifact":
+            if self.fw.current_op() is None:
+                print(col("  no operation open — start one with: op new <name>", "dim"))
+                return
+            if len(parts) < 3:
+                print("usage: op artifact <kind> <description>")
+                return
+            kind = parts[1]
+            descr = " ".join(parts[2:])
+            aid = self.fw.op_log_artifact(kind, descr)
+            print(col(f"[+] logged artifact #{aid} ({kind}) — teardown will list it "
+                      f"for manual reversal", "good"))
+            return
+
+        if verb == "teardown":
+            confirm = len(parts) > 1 and parts[1] == "confirm"
+            res = self.fw.op_teardown(confirm=confirm)
+            if res["op"] is None:
+                print(col("  no operation open", "dim"))
+                return
+            if not confirm:
+                print(col("◆ teardown plan (preview — add 'confirm' to execute)", "accent"))
+                print(col(f"  close {len(res['sessions'])} live session(s), "
+                          f"{len(res['forwards'])} port-forward(s)", "dim"))
+                if res["artifacts"]:
+                    print(col(f"  {len(res['artifacts'])} operator-logged artifact(s) "
+                              f"to revert BY HAND (Erebus won't touch targets):", "warn"))
+                    for a in res["artifacts"]:
+                        hint = f" — {a['revert_hint']}" if a["revert_hint"] else ""
+                        print(col(f"    · [{a['kind']}] {a['descr']}{hint}", "dim"))
+                return
+            print(col(f"[+] teardown: closed {len(res['closed_sessions'])} session(s), "
+                      f"{len(res['closed_forwards'])} forward(s)", "good"))
+            if res["pending_artifacts"]:
+                print(col(f"  [!] {len(res['pending_artifacts'])} artifact(s) still need "
+                          f"manual reversal (listed; targets untouched)", "warn"))
+            return
+
         if verb == "status":
             op = self.fw.current_op()
             if op is None:
@@ -230,7 +269,8 @@ class EreConsole(cmd.Cmd):
             print(col(f"  {self._op_counts(int(op['id']))}", "dim"))
             return
 
-        print("usage: op [status | new <name> [codename] | end | list]")
+        print("usage: op [status | new <name> [codename] | end | list | "
+              "artifact <kind> <descr> | teardown [confirm]]")
 
     def do_scope(self, arg: str) -> None:
         """scope [show | allow <cidr> | load <file>]."""

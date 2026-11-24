@@ -5,6 +5,15 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Engagement teardown (platform roadmap Phase 3, part 2)**: a reversible, fully-logged
+  "leave the lab as you found it" step for an operation. Teardown closes the Erebus-side
+  resources the op opened — live sessions and port-forwards — recording what it closed
+  (`op.teardown` event). Target-side state is **never** auto-reverted and target logs are
+  never touched: artifacts the operator logs (`op artifact <kind> <descr>`, stored in a
+  new `op_artifacts` table) are **listed** for manual reversal, not executed. Console
+  `op teardown` (preview) / `op teardown confirm` (execute); token-gated `GET`/`POST
+  /operations/teardown` and `POST /operations/artifact`. This is engagement hygiene, not
+  anti-forensics.
 - **Engagement lifecycle — operations (platform roadmap Phase 3, part 1)**: work can
   now be wrapped as a named **operation**. An `operations` table records id, name,
   codename, a **scope snapshot** taken when the op opens, status and start/end times;

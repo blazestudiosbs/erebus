@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS operations(
   status TEXT, started REAL, ended REAL);
 CREATE TABLE IF NOT EXISTS settings(
   key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS op_artifacts(
+  id INTEGER PRIMARY KEY, op_id INTEGER, kind TEXT, descr TEXT,
+  revert_hint TEXT, reverted INTEGER, ts REAL);
 """
 
 # Records tagged with the engagement (operation) that produced them. Nullable:
@@ -307,3 +310,35 @@ class Store:
         return self.db.execute(
             "SELECT * FROM operations WHERE id=?", (int(op_id),)
         ).fetchone()
+
+    # -- op artifacts (things an op created that teardown should surface) ----
+    def add_op_artifact(self, op_id: int, kind: str, descr: str,
+                        revert_hint: str = "") -> int:
+        """Log something an operation created (a test account, a dropped file)
+        so teardown can list it. Erebus never auto-reverts target-side state;
+        the operator reverts it and marks it done."""
+        with self._lock:
+            cur = self.db.execute(
+                "INSERT INTO op_artifacts(op_id,kind,descr,revert_hint,reverted,ts) "
+                "VALUES(?,?,?,?,?,?)",
+                (int(op_id), kind, descr, revert_hint, 0, time.time()),
+            )
+            self.db.commit()
+            return int(cur.lastrowid or 0)
+
+    def op_artifacts(self, op_id: int | None = None) -> list[sqlite3.Row]:
+        if op_id is None:
+            return self.db.execute(
+                "SELECT * FROM op_artifacts ORDER BY id"
+            ).fetchall()
+        return self.db.execute(
+            "SELECT * FROM op_artifacts WHERE op_id=? ORDER BY id", (int(op_id),)
+        ).fetchall()
+
+    def mark_artifact_reverted(self, aid: int, reverted: bool = True) -> None:
+        with self._lock:
+            self.db.execute(
+                "UPDATE op_artifacts SET reverted=? WHERE id=?",
+                (1 if reverted else 0, int(aid)),
+            )
+            self.db.commit()
