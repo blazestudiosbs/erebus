@@ -5,6 +5,14 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Fuzz bench deepening (researcher role)**: the fuzzing bench now drives three backends
+  — AFL++, **libFuzzer** (the instrumented target is the fuzzer) and **honggfuzz** — via a
+  `build_argv` dispatcher and per-backend crash-layout collection (`crashes/`, `crash-*`,
+  `*.fuzz`, with signal names parsed from filenames). `parse_coverage` pulls `cov:`/`ft:`
+  edges/features out of a fuzzer log into `FuzzResult.coverage`, and `minimize_input`
+  does **ddmin test-case minimisation** against an injected still-crashes predicate
+  (re-execution belongs in the sandbox). Still find-and-triage — it discovers, collects
+  and shrinks crashes; it builds no exploit.
 - **Research dashboard surface (researcher role)**: the Research tab is now the
   **vulnerability bench** — it renders the whole researcher loop as a pipeline
   (fuzz → reproduce & triage → exploitability → PoC harness → coordinated disclosure)

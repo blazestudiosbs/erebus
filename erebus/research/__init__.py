@@ -20,7 +20,12 @@ from .fuzz import (
     FuzzSpec,
     ResearchError,
     build_afl_argv,
+    build_argv,
+    build_honggfuzz_argv,
+    build_libfuzzer_argv,
     collect_crashes,
+    minimize_input,
+    parse_coverage,
 )
 from .poc import render_poc, write_poc
 from .reproduce import (
@@ -38,6 +43,8 @@ from .triage import CrashBucket, bucket_crashes, minimize_corpus, summarize
 __all__ = [
     "ResearchError",
     "CrashInput", "FuzzResult", "FuzzRunner", "FuzzSpec", "build_afl_argv", "collect_crashes",
+    "build_argv", "build_libfuzzer_argv", "build_honggfuzz_argv", "parse_coverage",
+    "minimize_input",
     "CrashBucket", "bucket_crashes", "minimize_corpus", "summarize",
     "CrashAnalysis", "RootCauseBucket", "parse_debugger", "stack_hash",
     "classify_exploitability", "reproduce_crash", "bucket_by_root_cause", "build_gdb_argv",
