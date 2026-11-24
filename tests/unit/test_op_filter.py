@@ -93,3 +93,29 @@ def test_homefield_endpoint_op_param() -> None:
         scoped = c.get(f"/homefield?op={a}", headers=auth).json()
         assert scoped["stats"]["hosts"] == 1
         assert [n["label"] for n in scoped["nodes"] if n["kind"] == "account"] == ["administrator"]
+
+
+def test_research_endpoint_exposes_pipeline() -> None:
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from erebus.rpc.server import create_app
+    with TestClient(create_app(Framework(), token="t")) as c:
+        d = c.get("/research").json()
+    assert {"afl_available", "gdb_available", "sandbox_available", "pipeline"} <= set(d)
+    stages = [s["stage"] for s in d["pipeline"]]
+    assert stages == ["Fuzz", "Reproduce & triage", "Exploitability", "PoC harness", "Disclosure"]
+    # the analysis-only stages are always ready
+    ready = {s["stage"]: s["ready"] for s in d["pipeline"]}
+    assert ready["Exploitability"] and ready["PoC harness"] and ready["Disclosure"]
+
+
+def test_dashboard_research_pipeline_wiring() -> None:
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from erebus.rpc.server import create_app
+    with TestClient(create_app(Framework(), token="t")) as c:
+        html = c.get("/").text
+    assert "d.pipeline" in html and 'class="rpipe"' in html
+    assert "vulnerability bench" in html
