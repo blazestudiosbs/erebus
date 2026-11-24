@@ -411,11 +411,14 @@ def create_app(framework: Any, token: str | None = None,
                 "total": len(tools), "tools": [_osint_tool_dict(t) for t in tools[:300]]}
 
     @app.get("/homefield", dependencies=[Depends(require_token)])
-    def knowledge_graph() -> dict[str, Any]:
+    def knowledge_graph(request: Request) -> dict[str, Any]:
         """The homefield knowledge graph: host/service/account nodes + edges,
-        with credential-reuse modelled as shared account nodes. Read-only."""
+        with credential-reuse modelled as shared account nodes. Read-only.
+        ``?op=<id>`` scopes it to one operation's footprint."""
         from erebus.graph import build_graph
-        return build_graph(framework.store)
+        op = request.query_params.get("op", "").strip()
+        op_id = int(op) if op.isdigit() else None
+        return build_graph(framework.store, op_id=op_id)
 
     @app.get("/homefield/blast", dependencies=[Depends(require_token)])
     def graph_blast(request: Request) -> dict[str, Any]:

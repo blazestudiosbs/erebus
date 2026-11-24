@@ -72,6 +72,8 @@ Not yet scoped. Candidates that fit the research-platform framing and the
 guardrails:
 
 - Deeper ATT&CK coverage (sub-technique granularity, data-source mapping).
-- Operation-aware filtering across the existing dashboard tabs.
+- ~~Operation-aware filtering across the existing dashboard tabs.~~ ✅ done — a shared
+  operation filter on the Findings, Jobs, Sessions, Credentials tabs and the Homefield
+  graph.
 
 Anything here must keep the non-negotiable guardrails intact and stay stdlib-first.
