@@ -284,6 +284,28 @@
   .osint-mode .lnk:hover{ text-decoration:underline; }
   .ocard .ohead{ padding:9px 13px; }
   .ocard .oname{ font-size:13px; }
+  /* DNS view (dnsdumpster-style sectioned tables) */
+  .dns-status{ font-size:12px; color:#8a81ad; margin:0 0 14px; font-family:ui-monospace,monospace; min-height:15px; }
+  .dns-sec{ margin-bottom:16px; padding:0; overflow:hidden; border-radius:12px; }
+  .dns-sec .dns-h{ display:flex; align-items:center; gap:10px; padding:11px 15px; border-bottom:1px solid #1b1630; }
+  .dns-sec .dns-h .ttl{ color:#cfc6ef; font-size:12px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; }
+  .dns-sec .dns-h .cnt{ margin-left:auto; color:#6f6690; font-size:11px; font-family:ui-monospace,monospace; }
+  .dns-sec .dns-h .ic{ width:22px; height:22px; border-radius:7px; display:flex; align-items:center; justify-content:center;
+    font-size:12px; color:var(--accent); background:linear-gradient(180deg,#241a3a,#160f28);
+    box-shadow:0 1px 0 var(--edge), inset 0 1px 0 var(--rim); }
+  table.dnstbl{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.dnstbl th{ text-align:left; padding:7px 15px; color:#6e6a85; font-weight:500; font-size:10.5px;
+    text-transform:uppercase; letter-spacing:.4px; border-bottom:1px solid #1b1630; }
+  table.dnstbl td{ padding:8px 15px; border-bottom:1px solid #120f20; color:#cfc6ef; font-family:ui-monospace,monospace; vertical-align:top; }
+  table.dnstbl tr:last-child td{ border-bottom:0; }
+  table.dnstbl tr:hover td{ background:rgba(90,70,160,0.08); }
+  .dnstbl .host{ color:#e6e1ff; } .dnstbl .ip{ color:#7be8ff; } .dnstbl .rdns{ color:#9a92b8; }
+  .dnstbl .prov{ color:#cfc6ef; } .dnstbl .asn{ color:#b98bff; } .dnstbl .pfx{ color:#6f6690; font-size:11px; }
+  .dnstbl .cc{ color:#8a81ad; }
+  .dns-txt{ padding:10px 15px; display:flex; flex-direction:column; gap:7px; }
+  .dns-txt .t{ font-family:ui-monospace,monospace; font-size:12px; color:#cfc6ef; word-break:break-all;
+    background:rgba(10,8,18,0.55); border:1px solid #1b1630; border-radius:7px; padding:7px 10px; }
+  .dns-none{ padding:11px 15px; color:#6e6a85; font-family:ui-monospace,monospace; font-size:12px; }
 </style>
 </head>
 <body>
@@ -340,6 +362,18 @@
         <p class="psub">Every loaded module. Click a row to load it into the Targets runner.</p>
         <input class="filter" id="mod-filter" placeholder="filter modules&hellip;" spellcheck="false"/>
         <div id="mod-table"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="view-panel" id="dnsview" style="display:none">
+      <div class="pwrap">
+        <h2>DNS</h2>
+        <p class="psub">Passive DNS recon, dnsdumpster-style. Enter a domain &mdash; every query goes to a resolver and a public BGP API, never to the target. Each host is enriched with its IP, reverse DNS and ASN / network owner.</p>
+        <div class="osint-ctl">
+          <input id="dns-q" placeholder="domain &mdash; caporia.co" autocomplete="off" spellcheck="false"/>
+          <button class="btn sm" id="dns-go">Map</button>
+        </div>
+        <div class="dns-status" id="dns-status"></div>
+        <div id="dns-out"></div>
       </div>
     </div>
     <div class="view-panel" id="findingsview" style="display:none">
@@ -488,12 +522,12 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
-  var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules'], Findings:['Findings'], OSINT:['OSINT'],
+  var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules','DNS'], Findings:['Findings'], OSINT:['OSINT'],
     Access:['Sessions','Pivots','Creds'], Jobs:['Jobs'], Research:['Research'],
     Report:['Reports','Notes'], Console:['Terminal'] };
-  var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', Sessions:'Sessions', Pivots:'Pivots',
+  var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
     Creds:'Credentials', Reports:'Export', Notes:'Notes' };
   var WRAP_SEL='.pwrap,.tgt-wrap,.notes-wrap,.term-wrap';
   var lastMember={}; // remember the last member opened per group
@@ -526,6 +560,7 @@
     if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
     if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
     else if(name==='Modules'){ loadModules(); }
+    else if(name==='DNS'){ dnsInit(); }
     else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
     else if(name==='OSINT'){ osintInit(); }
     else if(name==='Jobs'){ loadJobs(); pollTimer=setInterval(loadJobs,3000); }
@@ -756,6 +791,52 @@
       else if(res.status===403){ sessOut('<span class="err">'+escHtml((res.j&&res.j.detail)||'session exec disabled')+'</span>\n'); }
       else { sessOut('<span class="err">'+escHtml((res.j&&res.j.detail)||('HTTP '+res.status))+'</span>\n'); }
     }).catch(function(e){ sessOut('<span class="err">request failed: '+escHtml(String(e))+'</span>\n'); }); }
+
+  // ---- DNS tab (dnsdumpster-style passive DNS report) ------------------
+  function dnsInit(){ var q=document.getElementById('dns-q'), go=document.getElementById('dns-go');
+    if(q && !q._wired){ q._wired=1; q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ dnsRun(); } }); }
+    if(go && !go._wired){ go._wired=1; go.onclick=function(){ dnsRun(); }; }
+    if(q) q.focus(); }
+  function dnsStatus(msg,color){ var el=document.getElementById('dns-status'); if(el){ el.textContent=msg||''; el.style.color=color||'#8a81ad'; } }
+  function dnsRun(){ var d=(document.getElementById('dns-q').value||'').trim();
+    var out=document.getElementById('dns-out'); if(!d){ dnsStatus('enter a domain','#ff9d2e'); return; }
+    if(!hasTok()){ dnsStatus('connect to a live server first (run  erebus console --serve)','#ff9d2e'); return; }
+    dnsStatus('resolving '+d+' \u2026'); if(out) out.innerHTML='';
+    fetch('dns?domain='+encodeURIComponent(d),{headers:authH(),cache:'no-store'})
+      .then(function(r){ return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};}); })
+      .then(function(res){ if(!res.ok){ dnsStatus((res.j&&res.j.detail)||('HTTP '+res.status),'#ff6a6a'); return; }
+        dnsRender(res.j); })
+      .catch(function(){ dnsStatus('request failed','#ff6a6a'); }); }
+  var DNS_IC={ ns:'\u29C9', mx:'\u2709', txt:'\u2261', host:'\u25A3' };
+  function dnsCell(r){ return r||'<span class="jmut">\u2014</span>'; }
+  function dnsRender(j){ var out=document.getElementById('dns-out'); if(!out) return;
+    if(j.error){ dnsStatus(j.error,'#ff6a6a'); out.innerHTML=''; return; }
+    var note=(j.dig?'':'dig not found on the server \u2014 only A/AAAA resolved. Install dnsutils for NS/MX/TXT. ');
+    dnsStatus(note+(j.enriched?'':'(offline \u2014 ASN enrichment skipped)')||('mapped '+escHtml(j.domain)),
+              note?'#ff9d2e':'#36d399');
+    if(!note && j.enriched) dnsStatus('mapped '+j.domain, '#36d399');
+    out.innerHTML=(j.sections||[]).map(function(sec){
+      var head='<div class="dns-h"><span class="ic">'+(DNS_IC[sec.key]||'\u25A3')+'</span><span class="ttl">'+escHtml(sec.title)+'</span>'
+        +'<span class="cnt">'+((sec.key==='txt'?(sec.txt||[]).length:(sec.rows||[]).length))+'</span></div>';
+      var body;
+      if(sec.key==='txt'){ var ts=sec.txt||[];
+        body=ts.length?('<div class="dns-txt">'+ts.map(function(t){return '<div class="t">'+escHtml(t)+'</div>';}).join('')+'</div>')
+                      :'<div class="dns-none">no TXT records</div>';
+      } else { var rows=sec.rows||[];
+        if(!rows.length){ body='<div class="dns-none">no records</div>'; }
+        else { body='<table class="dnstbl"><thead><tr><th>Host</th><th>IP</th><th>Reverse DNS</th><th>ASN / Netblock owner</th><th>CC</th></tr></thead><tbody>'
+          +rows.map(function(r){
+            var asn=r.asn?('<span class="asn">AS'+escHtml(String(r.asn))+'</span> '+escHtml(r.provider||'')
+                           +(r.prefix?('<div class="pfx">'+escHtml(r.prefix)+'</div>'):'')):'<span class="jmut">\u2014</span>';
+            return '<tr><td class="host">'+escHtml(r.host||'')+'</td>'
+              +'<td class="ip">'+dnsCell(escHtml(r.ip||''))+'</td>'
+              +'<td class="rdns">'+dnsCell(escHtml(r.rdns||''))+'</td>'
+              +'<td class="prov">'+asn+'</td>'
+              +'<td class="cc">'+dnsCell(escHtml(r.country||''))+'</td></tr>'; }).join('')
+          +'</tbody></table>'; }
+      }
+      return '<div class="card dns-sec">'+head+body+'</div>'; }).join('');
+  }
 
   // ---- OSINT tab (the ingested OSINT Framework directory) --------------
   var osintCatsLoaded=false, osintFlagsSet={}, osintLastMode=null, osintLastArg='';

@@ -15,6 +15,12 @@ this project uses [Semantic Versioning](https://semver.org).
   open + copy-URL actions, and free/passive/API/live filter toggles.
 
 ### Added
+- **DNS tab (dnsdumpster-style)**: a passive DNS report for a domain, grouped the
+  way dnsdumpster presents it — DNS Servers (NS), MX, TXT, and Host (A/AAAA)
+  records — with each host enriched with its IP, reverse DNS and ASN / netblock
+  owner. New `erebus/dnsview.py` builder (network hooks injected, unit-tested) and
+  a token-gated `GET /dns?domain=` endpoint; queries hit a resolver and a public
+  BGP API, never the target. Lives under Recon → DNS.
 - Copilot LLM auto-detect: `POST /copilot/ollama/autodetect` finds a working
   raw-Ollama endpoint (accepts a candidate only if native `/api/tags` answers,
   so Open WebUI / nginx proxies that 405 the chat path are skipped) and picks a
