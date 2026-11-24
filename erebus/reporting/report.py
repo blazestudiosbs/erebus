@@ -123,6 +123,13 @@ def _when(ts: object) -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(float(ts)))  # type: ignore[arg-type]
 
 
+def _cvss(v: object) -> str:
+    try:
+        return f"{float(str(v)):.1f}" if v not in (None, "") else ""
+    except (TypeError, ValueError):
+        return ""
+
+
 def _epss(v: object) -> str:
     return "" if v is None else f"{float(v):.2f}"  # type: ignore[arg-type]
 
@@ -176,9 +183,10 @@ def render_markdown(data: ReportData, title: str = "Engagement report") -> str:
     parts += ["", "## Findings", ""]
     if data.findings:
         parts.append(_md_table(
-            ["Severity", "Host", "Title", "CVE", "KEV", "EPSS", "ATT&CK", "Evidence"],
-            [[f["severity"], f["host"], f["title"], f["cve"], "yes" if f["kev"] else "",
-              _epss(f["epss"]), f["attack"], f["evidence_ref"]] for f in data.findings]))
+            ["Severity", "Host", "Title", "CVE", "CVSS", "KEV", "EPSS", "ATT&CK", "Evidence"],
+            [[f["severity"], f["host"], f["title"], f["cve"], _cvss(f.get("cvss")),
+              "yes" if f["kev"] else "", _epss(f["epss"]), f["attack"],
+              f["evidence_ref"]] for f in data.findings]))
     else:
         parts.append("No findings recorded.")
 
@@ -309,10 +317,10 @@ def render_html(data: ReportData, title: str = "Engagement report", theme: str =
     ]
     if data.findings:
         out.append(_html_table(
-            ["Severity", "Host", "Title", "CVE", "KEV", "EPSS", "ATT&CK", "Evidence"],
+            ["Severity", "Host", "Title", "CVE", "CVSS", "KEV", "EPSS", "ATT&CK", "Evidence"],
             [[_sev_badge(f["severity"]), _h(f["host"]), _h(f["title"]), _h(f["cve"]),
-              "yes" if f["kev"] else "", _h(_epss(f["epss"])), _h(f["attack"]),
-              _h(f["evidence_ref"])] for f in data.findings]))
+              _h(_cvss(f.get("cvss"))), "yes" if f["kev"] else "", _h(_epss(f["epss"])),
+              _h(f["attack"]), _h(f["evidence_ref"])] for f in data.findings]))
     else:
         out.append('<p class="muted">No findings recorded.</p>')
 
@@ -446,9 +454,10 @@ def render_pdf(data: ReportData, title: str = "Engagement report") -> bytes:
 
     heading("Findings")
     if data.findings:
-        table(["Severity", "Host", "Title", "CVE", "KEV", "EPSS", "ATT&CK"],
-              [[f["severity"], f["host"], f["title"], f["cve"], "yes" if f["kev"] else "",
-                _epss(f["epss"]), f["attack"]] for f in data.findings])
+        table(["Severity", "Host", "Title", "CVE", "CVSS", "KEV", "EPSS", "ATT&CK"],
+              [[f["severity"], f["host"], f["title"], f["cve"], _cvss(f.get("cvss")),
+                "yes" if f["kev"] else "", _epss(f["epss"]), f["attack"]]
+               for f in data.findings])
     else:
         para("No findings recorded.", muted=True)
 

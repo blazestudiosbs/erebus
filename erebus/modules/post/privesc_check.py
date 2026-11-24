@@ -122,9 +122,13 @@ class PrivescCheck(Post):
             sev = str(row["severity"] or "").lower()
             cve = str(row["id"])
             n += 1
+            try:
+                cvss = float(row["cvss"]) if row["cvss"] is not None else None
+            except (TypeError, ValueError):
+                cvss = None
             self.add_finding(
                 host, f"Candidate kernel privesc: {cve} (kernel {ver})",
-                severity=sev, cve=cve, kev=bool(row["kev"]),
+                severity=sev, cve=cve, kev=bool(row["kev"]), cvss=cvss,
                 evidence_ref=f"session:{sess.id} uname {version}")
             self.good(f"{sev.upper()}: candidate kernel CVE {cve} for {ver}")
         return n

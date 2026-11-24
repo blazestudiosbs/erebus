@@ -5,6 +5,9 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **CVSS score** on findings: new `cvss` column (with a migration for existing
+  DBs), populated by `vulnmap` + the privesc kernel-CVE check from the intel DB,
+  and shown in the HTML/PDF/Markdown reports and the dashboard finding detail.
 - OSINT Framework directory ingested (`erebus/osint/`, vendored MIT `arf.json`,
   1,171 tools / 33 categories) with an `erebus osint` CLI (categories/search/list,
   `--free/--api/--passive/--live`).
