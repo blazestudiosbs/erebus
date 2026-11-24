@@ -5,7 +5,14 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
-<<<<<<< HEAD
+- **PoC reproduction-harness scaffold (researcher role)**: `research/poc.py` turns a
+  triaged `CrashAnalysis` into a standalone, parseable **reproduction harness** — a
+  script that re-runs the target against the crashing input *inside `erebus.sandbox`*
+  (never on the host) with the triage (signal, exploitability, stack hash, frames)
+  already filled in and TODOs for minimisation and coordinated disclosure. It is a
+  reproduction harness, **not an exploit**: it triggers and documents a crash (what you
+  attach to a disclosure report); it never gains control, builds a payload or
+  weaponises anything. Mechanical codegen, written owner-only (0600).
 - **Exploit module type (red-team role)**: the module scaffolder now emits an **empty,
   scope-gated `exploit` skeleton** — `check()` + `exploit()` as TODOs, `RHOSTS` so the
   framework's deny-all scope gate applies automatically, and `Rank.MANUAL` — for an
@@ -14,7 +21,6 @@ this project uses [Semantic Versioning](https://semver.org).
   vulnerability probe). `payload`/`encoder` generation stays refused (no shellcode or
   evasion encoders), and the AI drafter still never writes an exploit body — an exploit
   skeleton is always the plain mechanical stub for the operator to fill in by hand.
-=======
 - **Crash reproduction + exploitability triage (researcher role)**: `research/reproduce.py`
   closes the loop `triage.py` flagged — root-cause dedup by **stack hash** instead of
   input bytes. It parses a debugger's output (signal, faulting address, backtrace),
@@ -24,7 +30,6 @@ this project uses [Semantic Versioning](https://semver.org).
   groups analysed crashes and ranks exploitable buckets first. Re-execution is **injected**
   (`build_gdb_argv` runs gdb batch inside `erebus.sandbox`, never on the host); this is
   read-only analysis — it classifies a crash, it does not build an exploit.
->>>>>>> origin/feat/crash-reproducer
 - **Operation filter extended to the Homefield graph**: the shared operation dropdown
   now also scopes the Homefield knowledge graph. `build_graph(store, op_id=…)` restricts
   the estate to the hosts an operation touched (its op-tagged findings/credentials/

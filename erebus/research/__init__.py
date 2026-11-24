@@ -21,6 +21,7 @@ from .fuzz import (
     build_afl_argv,
     collect_crashes,
 )
+from .poc import render_poc, write_poc
 from .reproduce import (
     CrashAnalysis,
     RootCauseBucket,
@@ -39,4 +40,5 @@ __all__ = [
     "CrashBucket", "bucket_crashes", "minimize_corpus", "summarize",
     "CrashAnalysis", "RootCauseBucket", "parse_debugger", "stack_hash",
     "classify_exploitability", "reproduce_crash", "bucket_by_root_cause", "build_gdb_argv",
+    "render_poc", "write_poc",
 ]
