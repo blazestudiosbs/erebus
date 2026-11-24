@@ -494,3 +494,36 @@ def test_wiki_is_open_and_cited():
         j = r.json()
         assert j["pages"] and j["source"]["author"]
         assert all(p.get("slug") and p.get("sections") for p in j["pages"])
+
+
+# --- knowledge graph -----------------------------------------------------
+
+def test_graph_requires_token():
+    with _client(Framework()) as c:
+        assert c.get("/homefield").status_code == 401
+        assert c.get("/homefield/blast?host=10.0.0.1").status_code == 401
+
+
+def test_graph_returns_nodes_and_edges():
+    fw = Framework()
+    fw.store.add_target("10.0.0.1", status="scanned")
+    fw.store.add_credential("10.0.0.1", "admin", secret="x")
+    fw.store.add_credential("10.0.0.2", "admin", secret="x")
+    with _client(fw) as c:
+        j = c.get("/homefield", headers=AUTH).json()
+        assert j["nodes"] and "edges" in j
+        assert "admin" in j["stats"]["reused_accounts"]
+
+
+def test_graph_blast_requires_host():
+    with _client(Framework()) as c:
+        assert c.get("/homefield/blast", headers=AUTH).status_code == 400
+
+
+def test_graph_blast_reports_reuse():
+    fw = Framework()
+    fw.store.add_credential("10.0.0.1", "admin", secret="x")
+    fw.store.add_credential("10.0.0.2", "admin", secret="x")
+    with _client(fw) as c:
+        j = c.get("/homefield/blast?host=10.0.0.1", headers=AUTH).json()
+        assert {r["host"] for r in j["reachable_hosts"]} == {"10.0.0.2"}

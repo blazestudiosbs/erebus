@@ -330,13 +330,24 @@
   .wkey{ margin:12px 0 0; padding:10px 13px; border-radius:9px; background:rgba(10,8,18,.5); border:1px solid #1b1630; }
   .wkey .wkh{ color:#8a81ad; font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; margin-bottom:6px; }
   .wkey ul{ margin:0; padding-left:18px; } .wkey li{ color:#cfc6ef; font-size:12px; margin:3px 0; line-height:1.5; }
+  /* Homefield knowledge graph */
+  .hf-reuse-row{ display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid #120f20; font-size:12.5px; }
+  .hf-reuse-row:last-child{ border-bottom:0; }
+  .hf-acct{ color:#b98bff; font-family:ui-monospace,monospace; font-weight:600; min-width:120px; }
+  .hf-arrow{ color:#6f6690; } .hf-hosts{ color:#7be8ff; font-family:ui-monospace,monospace; }
+  .hf-blast-card{ border-left:3px solid #ff9d2e; }
+  .hf-reach{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .hf-reach .r{ background:linear-gradient(180deg,#241a3a,#160f28); border:1px solid #3a2d55; border-radius:7px;
+    padding:4px 10px; font-family:ui-monospace,monospace; font-size:12px; color:#7be8ff;
+    box-shadow:0 1px 0 var(--edge), inset 0 1px 0 rgba(201,163,255,.14); }
+  .hf-reach .r .v{ color:#6f6690; }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Recon</span><span>Findings</span><span>OSINT</span><span>Access</span><span>Jobs</span><span>Research</span><span>Report</span><span>Guide</span><span>Console</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Recon</span><span>Findings</span><span>OSINT</span><span>Homefield</span><span>Access</span><span>Jobs</span><span>Research</span><span>Report</span><span>Guide</span><span>Console</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -398,6 +409,20 @@
         </div>
         <div class="dns-status" id="dns-status"></div>
         <div id="dns-out"></div>
+      </div>
+    </div>
+    <div class="view-panel" id="homefieldview" style="display:none">
+      <div class="pwrap">
+        <h2>Homefield</h2>
+        <p class="psub">The estate as a graph: hosts, services and accounts. A reused account is a single node linked to every host it unlocks &mdash; that's a lateral-movement path. Enter a host to see its blast radius.</p>
+        <div class="tiles" id="hf-tiles" style="margin-bottom:16px"></div>
+        <div class="card" style="margin-bottom:14px"><h4>credential reuse &mdash; pivot paths</h4><div id="hf-reuse"><div class="empty">loading&hellip;</div></div></div>
+        <div class="osint-ctl">
+          <input id="hf-host" placeholder="host for blast radius &mdash; e.g. 10.0.0.1" autocomplete="off" spellcheck="false" list="hf-hostlist"/>
+          <datalist id="hf-hostlist"></datalist>
+          <button class="btn sm" id="hf-go">Blast radius</button>
+        </div>
+        <div id="hf-blast"></div>
       </div>
     </div>
     <div class="view-panel" id="guideview" style="display:none">
@@ -555,10 +580,10 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
   var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules','DNS'], Findings:['Findings'], OSINT:['OSINT'],
-    Access:['Sessions','Pivots','Creds'], Jobs:['Jobs'], Research:['Research'],
+    Access:['Sessions','Pivots','Creds'], Homefield:['Homefield'], Jobs:['Jobs'], Research:['Research'],
     Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
   var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
     Creds:'Credentials', Reports:'Export', Notes:'Notes' };
@@ -597,6 +622,7 @@
     else if(name==='Guide'){ wikiInit(); }
     else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
     else if(name==='OSINT'){ osintInit(); }
+    else if(name==='Homefield'){ hfInit(); }
     else if(name==='Jobs'){ loadJobs(); pollTimer=setInterval(loadJobs,3000); }
     else if(name==='Sessions'){ loadSessions(); pollTimer=setInterval(loadSessions,4000); }
     else if(name==='Pivots'){ loadPivots(); pollTimer=setInterval(loadPivots,3000); }
@@ -904,6 +930,46 @@
       }
       return '<div class="card dns-sec">'+head+body+'</div>'; }).join('');
   }
+
+  // ---- Homefield tab (knowledge graph: hosts/accounts/reuse + blast radius) ----
+  function hfInit(){ var go=document.getElementById('hf-go'), h=document.getElementById('hf-host');
+    if(go && !go._wired){ go._wired=1; go.onclick=hfBlast; }
+    if(h && !h._wired){ h._wired=1; h.addEventListener('keydown',function(e){ if(e.key==='Enter'){ hfBlast(); } }); }
+    if(!hasTok()){ var t=document.getElementById('hf-tiles'); if(t) t.innerHTML='<div class="empty">connect to a live server first</div>'; return; }
+    fetch('homefield',{headers:authH(),cache:'no-store'}).then(function(r){return r.json();}).then(hfRender)
+      .catch(function(){ var t=document.getElementById('hf-tiles'); if(t) t.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function hfTile(k,v,color){ return '<div class="tile"><div class="k">'+escHtml(k)+'</div><div class="v"'+(color?(' style="color:'+color+'"'):'')+'>'+v+'</div></div>'; }
+  function hfRender(g){ var st=g.stats||{}, tiles=document.getElementById('hf-tiles');
+    if(tiles){ tiles.innerHTML=hfTile('hosts',st.hosts||0)+hfTile('services',st.services||0)
+      +hfTile('accounts',st.accounts||0)+hfTile('reused',(st.reused_accounts||[]).length,'#ff9d2e'); }
+    // populate the host datalist from node labels
+    var dl=document.getElementById('hf-hostlist');
+    if(dl){ dl.innerHTML=(g.nodes||[]).filter(function(n){return n.kind==='host';})
+      .map(function(n){ return '<option value="'+escHtml(n.label)+'">'; }).join(''); }
+    var reuse=document.getElementById('hf-reuse'), reused=st.reused_accounts||[];
+    if(reuse){
+      if(!reused.length){ reuse.innerHTML='<div class="empty">no reused credentials found yet &mdash; reuse appears here as accounts are discovered on multiple hosts</div>'; }
+      else { reuse.innerHTML=reused.map(function(acct){
+        var hosts=(g.edges||[]).filter(function(e){return e.rel==='has-cred' && e.src==='acct:'+acct;})
+          .map(function(e){ return e.dst.replace(/^host:/,''); });
+        return '<div class="hf-reuse-row"><span class="hf-acct">'+escHtml(acct)+'</span>'
+          +'<span class="hf-arrow">unlocks &rarr;</span><span class="hf-hosts">'+escHtml(hosts.join(', '))+'</span></div>'; }).join(''); }
+    }
+  }
+  function hfBlast(){ var host=(document.getElementById('hf-host').value||'').trim(), out=document.getElementById('hf-blast');
+    if(!host||!out) return; if(!hasTok()){ out.innerHTML='<div class="empty">connect to a live server first</div>'; return; }
+    out.innerHTML='<div class="empty">computing&hellip;</div>';
+    fetch('homefield/blast?host='+encodeURIComponent(host),{headers:authH(),cache:'no-store'})
+      .then(function(r){return r.json();}).then(function(b){
+        var accts=(b.accounts||[]); var reach=(b.reachable_hosts||[]);
+        var html='<div class="card hf-blast-card"><h4>blast radius &mdash; '+escHtml(b.host)+'</h4>';
+        html+='<div style="font-size:12.5px;color:#9a92b8;margin-bottom:8px">accounts on host: '
+          +(accts.length?('<span class="hf-acct" style="min-width:0">'+accts.map(escHtml).join('</span>, <span class="hf-acct" style="min-width:0">')+'</span>'):'<span class="jmut">none known</span>')+'</div>';
+        if(!reach.length){ html+='<div class="empty">no other hosts reachable via credential reuse</div>'; }
+        else { html+='<div style="font-size:12px;color:#8a81ad">reachable via reuse ('+reach.length+'):</div><div class="hf-reach">'
+          +reach.map(function(r){ return '<span class="r">'+escHtml(r.host)+' <span class="v">via '+escHtml((r.via||[]).join(','))+'</span></span>'; }).join('')+'</div>'; }
+        html+='</div>'; out.innerHTML=html;
+      }).catch(function(){ out.innerHTML='<div class="empty">request failed</div>'; }); }
 
   // ---- OSINT tab (the ingested OSINT Framework directory) --------------
   var osintCatsLoaded=false, osintFlagsSet={}, osintLastMode=null, osintLastArg='';
