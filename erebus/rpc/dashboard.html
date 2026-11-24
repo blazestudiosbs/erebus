@@ -94,6 +94,8 @@
   .sess-out{ margin:0; padding:10px 11px; max-height:300px; overflow:auto; font:12px ui-monospace,monospace; color:#d7d0f5; white-space:pre-wrap; word-break:break-word; }
   .sess-in{ display:flex; gap:7px; align-items:center; padding:8px 11px; border-top:1px solid #2a2340; }
   .sess-in input{ flex:1; background:transparent; border:none; outline:none; color:#e6e1ff; font:12px ui-monospace,monospace; }
+  .sess-verbs{ display:flex; flex-wrap:wrap; gap:6px; padding:9px 11px; border-bottom:1px solid #2a2340; }
+  .btn.sm.verb{ color:#9cdbff; }
   .btn.sm:hover{ border-color:#ff5c7a; color:#ff8fa3; }
   .btn:hover{ background:#241640; } .btn:disabled{ opacity:.5; cursor:default; }
   .btn.sec{ background:transparent; color:#9a92b8; }
@@ -590,13 +592,29 @@
     for(var i=0;i<btns.length;i++){ (function(el){ el.onclick=function(){
       sessSel={id:el.getAttribute('data-isid'), host:el.getAttribute('data-h')}; renderInteract(); }; })(btns[i]); }
     if(sessSel) renderInteract(); }
+  var sessVerbs=null;
   function renderInteract(){ var d=document.getElementById('sess-interact'); if(!d||!sessSel) return;
     d.innerHTML='<div class="sess-term"><div class="sess-hd">session #'+escHtml(sessSel.id)+' @ '+escHtml(sessSel.host)
-      +' <span class="jmut">(remote shell - commands are audited)</span></div>'
+      +' <span class="jmut">(read-only verbs always work; the command box needs --enable-session-exec)</span></div>'
+      +'<div id="sess-verbs" class="sess-verbs"></div>'
       +'<pre id="sess-out" class="sess-out"></pre>'
       +'<div class="sess-in"><span class="jmut">$</span><input id="sess-cmd" placeholder="command&hellip;" autocomplete="off" spellcheck="false"/></div></div>';
     var inp=document.getElementById('sess-cmd'); if(inp){ inp.focus();
-      inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); sessRun(inp.value); inp.value=''; } }); } }
+      inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); sessRun(inp.value); inp.value=''; } }); }
+    renderVerbs(); }
+  function renderVerbs(){ var box=document.getElementById('sess-verbs'); if(!box) return;
+    if(sessVerbs===null){ fetch('sessions/verbs',{cache:'no-store'}).then(function(r){return r.json();})
+      .then(function(j){ sessVerbs=j.verbs||[]; renderVerbs(); }).catch(function(){ sessVerbs=[]; }); return; }
+    box.innerHTML=sessVerbs.map(function(v){
+      return '<button class="btn sm verb" data-v="'+escHtml(v.name)+'" title="'+escHtml(v.description)+'">'+escHtml(v.name)+'</button>'; }).join('');
+    var bs=box.querySelectorAll('button[data-v]');
+    for(var i=0;i<bs.length;i++){ (function(el){ el.onclick=function(){ sessVerb(el.getAttribute('data-v')); }; })(bs[i]); } }
+  function sessVerb(verb){ if(!sessSel||!verb) return;
+    sessOut('<span class="jmut"># '+escHtml(verb)+'</span>\n');
+    apiPost('sessions/'+sessSel.id+'/verb',{verb:verb}).then(function(res){
+      if(res.ok){ sessOut(escHtml(res.j.output||'')+'\n'); }
+      else { sessOut('<span class="err">'+escHtml((res.j&&res.j.detail)||('HTTP '+res.status))+'</span>\n'); }
+    }).catch(function(e){ sessOut('<span class="err">request failed: '+escHtml(String(e))+'</span>\n'); }); }
   function sessOut(html){ var o=document.getElementById('sess-out'); if(!o) return; o.innerHTML+=html; o.scrollTop=o.scrollHeight; }
   function sessRun(cmd){ cmd=(cmd||'').trim(); if(!cmd||!sessSel) return;
     sessOut('<span class="jmut">$ '+escHtml(cmd)+'</span>\n');

@@ -44,6 +44,7 @@ from erebus.connectors.vault import VaultError
 from erebus.core.options import OptionError
 from erebus.core.pivot import session_socat_relay
 from erebus.core.scope import ScopeError
+from erebus.core.session_verbs import run_verb, verb_list
 
 from .events import EventBridge
 from .graph import build_graph
@@ -216,6 +217,35 @@ def create_app(framework: Any, token: str | None = None,
             raise HTTPException(status_code=502,
                                 detail=f"session {sid} failed: {exc}") from None
         return {"ok": True, "id": sid, "host": sess.host, "cmd": cmd, "output": out}
+
+    @app.get("/sessions/verbs")
+    async def session_verbs() -> dict[str, Any]:
+        """The closed whitelist of read-only session verbs (name + description)."""
+        return {"verbs": verb_list()}
+
+    @app.post("/sessions/{sid}/verb", dependencies=[Depends(require_token)])
+    async def session_verb(sid: int, payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        """Run one WHITELISTED read-only verb on a live session. No caller input
+        reaches the command, so this is bounded (not a shell) and always allowed
+        - unlike the opt-in raw /cmd exec. Audited like everything else."""
+        verb = str(payload.get("verb", "")).strip()
+        sess = framework.sessions.get(sid)
+        if sess is None or not sess.alive:
+            raise HTTPException(status_code=404, detail=f"no live session {sid}")
+        from ..core.events import LOG, Event
+        framework.events.publish(Event(LOG, {
+            "module": "session-verb", "level": "info",
+            "msg": f"session {sid} ({sess.host}) verb: {verb}"}))
+        try:
+            out = run_verb(sess, verb)
+        except KeyError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown verb {verb!r}; see GET /sessions/verbs") from None
+        except OSError as exc:
+            raise HTTPException(status_code=502,
+                                detail=f"session {sid} failed: {exc}") from None
+        return {"ok": True, "id": sid, "host": sess.host, "verb": verb, "output": out}
 
     @app.get("/scope")
     async def scope_show() -> dict[str, Any]:
