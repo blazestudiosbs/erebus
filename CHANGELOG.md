@@ -5,6 +5,16 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Pivot-aware scanning**: modules now open their TCP connections through a framework
+  **dialer**, so a scan can be routed over a controlled pivot and reach a downstream only
+  the pivot host can see. `core/dial.py` adds `DirectDialer` (the default — dials from the
+  Erebus host, unchanged) and `SessionDialer` (relays each connection through a pivot
+  session's socat/nc, a fresh relay port per connection). `scanner/portscan` dials via
+  `self.dial()` and labels the path it took; the console gains `pivot via <sid>` /
+  `pivot via off` to route scans through a session or go back to direct, and `GET /pivots`
+  reports the active `dialer` (shown as a "scan path" badge on the dashboard). Scope is not
+  widened: `Framework.run()` still scope-gates the module's RHOSTS, so the dialer only
+  changes *where a connection originates*, never *what is in scope*.
 - **Live pivot routes on the Homefield graph**: active forwards now show up in the
   knowledge graph as ordered **operator → hop → … → target** chains. `graph.pivot_routes()`
   derives them from the live forwards (nothing new stored), flagging each chain host that

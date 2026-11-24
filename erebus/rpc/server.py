@@ -346,8 +346,10 @@ def create_app(framework: Any, token: str | None = None,
 
     @app.get("/pivots")
     async def list_pivots() -> dict[str, Any]:
-        """Active port-forwards (local listener -> downstream via direct/session)."""
-        return {"pivots": [f.as_dict() for f in framework.pivots.list()]}
+        """Active port-forwards (local listener -> downstream via direct/session),
+        plus the current scan path (the dialer modules route connections through)."""
+        return {"pivots": [f.as_dict() for f in framework.pivots.list()],
+                "dialer": getattr(framework.dialer, "name", "direct")}
 
     @app.post("/pivots", dependencies=[Depends(require_token)])
     async def open_pivot(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006

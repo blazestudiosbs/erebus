@@ -118,7 +118,7 @@ Every module runs through `Framework.run()`, which enforces the scope gate.
 
 ## Subsystems
 
-`core/` (events, options, modules, loader, scope gate, datastore, sessions) ·
+`core/` (events, options, modules, loader, scope gate, datastore, sessions, pivot dialer) ·
 `lib/` (no-shell tool runner) · `intel/` (NVD/KEV/EPSS + EDB) ·
 `connectors/` (vault, Shodan, LLM) · `reporting/` (activity log, journal,
 evidence, MD/HTML/PDF) · `rpc/` (control API + dashboard) ·

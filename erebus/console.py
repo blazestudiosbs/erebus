@@ -471,10 +471,11 @@ class EreConsole(cmd.Cmd):
 
     def do_pivot(self, arg: str) -> None:
         """pivot | pivot open <rhost> <rport> [-s <sid>] [-r <sid,sid,..>] [-l <lport>]
-               | pivot close <id>
-        List, open, or close scope-gated port-forwards. Open direct (Erebus dials
-        the downstream), via one session (-s), or via a multi-hop route (-r).
+               | pivot close <id> | pivot via <sid> | pivot via off
+        List/open/close scope-gated port-forwards; or route module scans through a
+        pivot session with `via` (so a scan reaches hosts only the pivot can see).
         """
+        from .core.dial import DirectDialer, SessionDialer
         from .core.pivot import session_socat_relay
 
         parts = shlex.split(arg)
@@ -487,6 +488,20 @@ class EreConsole(cmd.Cmd):
                 chain = " -> ".join([f"{f.lhost}:{f.lport}", *f.hops,
                                      f"{f.rhost}:{f.rport}"])
                 print(f"  {f.id:<3} {chain}  [{f.via}]  conns={f.conns}")
+            via = getattr(self.fw.dialer, "name", "direct")
+            print(col(f"  scan path: {via}", "dim"))
+            return
+        if parts[0] == "via" and len(parts) > 1:
+            if parts[1] in ("off", "direct", "none"):
+                self.fw.dialer = DirectDialer()
+                print(col("  scans now dial downstreams directly", "good"))
+                return
+            sess = self.fw.sessions.get(int(parts[1]))
+            if sess is None or not sess.alive:
+                print(col(f"  no live session {parts[1]}", "error"))
+                return
+            self.fw.dialer = SessionDialer(sess)
+            print(col(f"  scans now route through session {sess.id} ({sess.host})", "good"))
             return
         if parts[0] == "close" and len(parts) > 1:
             ok = pm.close(int(parts[1]))

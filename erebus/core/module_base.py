@@ -8,6 +8,8 @@ from . import events as ev
 from .options import DataStore, OptionSpec
 
 if TYPE_CHECKING:
+    import socket
+
     from .framework import Framework
     from .sessions import Session
 
@@ -70,6 +72,12 @@ class Module:
 
     def missing(self) -> list[str]:
         return self.datastore.missing_required(self.options)
+
+    # --- connections (pivot-aware) ---
+    def dial(self, host: str, port: int, timeout: float = 3.0) -> socket.socket:
+        """Open a TCP connection through the framework's active dialer, so a scan
+        follows a configured pivot when one is set (direct otherwise)."""
+        return self.framework.dial(host, port, timeout)
 
     # --- event/datastore helpers for module authors ---
     def emit(self, type: str, **data: object) -> None:
