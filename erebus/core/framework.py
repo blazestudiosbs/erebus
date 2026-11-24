@@ -177,6 +177,42 @@ class Framework:
         }))
         return summary
 
+    def op_archive(self, passphrase: str, path: str, op_id: int | None = None,
+                   notes_text: str = "") -> dict[str, Any]:
+        """Export an operation's logbook to an encrypted archive on disk.
+
+        An export, not a move: nothing is deleted and the audit trail stays.
+        Credential secret values are never written (redacted to "set"). Returns
+        a summary (path, size, sha256, record counts); the passphrase and any
+        secret value are never put in the summary or the event.
+        """
+        import hashlib
+        from pathlib import Path
+
+        from ..reporting.archive import build_op_archive, seal
+
+        target_op = op_id
+        if target_op is None:
+            current = self.store.current_operation()
+            if current is None:
+                raise RuntimeError("no operation open — pass op_id or open one")
+            target_op = int(current["id"])
+
+        bundle = build_op_archive(self.store, int(target_op), notes_text=notes_text)
+        blob = seal(bundle, passphrase)
+        out = Path(path).expanduser()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(blob)
+        digest = hashlib.sha256(blob).hexdigest()
+        counts = {k: len(bundle[k]) for k in
+                  ("findings", "jobs", "sessions", "evidence", "credentials", "artifacts")}
+        summary = {"op": int(target_op), "path": str(out), "bytes": len(blob),
+                   "sha256": digest, "records": counts}
+        self.events.publish(Event(ev.OP_ARCHIVE, {
+            "op": int(target_op), "path": str(out), "bytes": len(blob), "sha256": digest,
+        }))
+        return summary
+
     def use(self, key: str) -> Module:
         cls = self.loader.get(key)
         if not cls:

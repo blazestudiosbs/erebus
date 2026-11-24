@@ -502,6 +502,33 @@ def create_app(framework: Any, token: str | None = None,
             raise HTTPException(status_code=409, detail=str(exc)) from None
         return {"ok": True, "artifact": aid}
 
+    @app.post("/operations/archive", dependencies=[Depends(require_token)])
+    async def archive_operation(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        """Export an op's logbook to an encrypted archive on disk. Credential
+        secret values are never written. The response carries no secrets."""
+        passphrase = str(payload.get("passphrase", ""))
+        path = str(payload.get("path", "")).strip()
+        if not passphrase or not path:
+            raise HTTPException(status_code=400, detail="missing 'passphrase' or 'path'")
+        op_id = payload.get("op_id")
+        try:
+            notes = _notes_path().read_text(encoding="utf-8")
+        except OSError:
+            notes = ""
+        try:
+            summary = framework.op_archive(
+                passphrase, path,
+                op_id=int(op_id) if op_id is not None else None,
+                notes_text=notes,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=f"write failed: {exc}") from None
+        return {"ok": True, **summary}
+
     @app.post("/scope/allow", dependencies=[Depends(require_token)])
     async def scope_allow(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
         target = str(payload.get("target", "")).strip()

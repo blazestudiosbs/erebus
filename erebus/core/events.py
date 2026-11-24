@@ -25,6 +25,7 @@ PIVOT_CLOSE = "pivot.close"
 OP_START = "op.start"
 OP_END = "op.end"
 OP_TEARDOWN = "op.teardown"
+OP_ARCHIVE = "op.archive"
 LOG = "log"
 
 

@@ -304,3 +304,118 @@ def test_artifact_endpoint_rejects_missing_fields() -> None:
         c.post("/operations", json={"name": "e"}, headers=AUTH)
         assert c.post("/operations/artifact", json={"kind": "file"},
                       headers=AUTH).status_code == 400
+
+
+# ---- part 3: encrypted archival ------------------------------------------
+
+def test_crypto_roundtrip_and_randomized() -> None:
+    from erebus import crypto
+    pt = b"engagement logbook \x00\xff bytes"
+    blob1 = crypto.encrypt(pt, "correct horse")
+    blob2 = crypto.encrypt(pt, "correct horse")
+    assert blob1 != blob2  # fresh salt + nonce each time
+    assert crypto.decrypt(blob1, "correct horse") == pt
+    assert crypto.decrypt(blob2, "correct horse") == pt
+
+
+def test_crypto_wrong_passphrase_and_tamper_fail_closed() -> None:
+    from erebus import crypto
+    blob = crypto.encrypt(b"secret report", "pw")
+    with pytest.raises(crypto.DecryptError):
+        crypto.decrypt(blob, "wrong")
+    tampered = bytearray(blob)
+    tampered[-1] ^= 0x01  # flip a tag bit
+    with pytest.raises(crypto.DecryptError):
+        crypto.decrypt(bytes(tampered), "pw")
+    with pytest.raises(crypto.DecryptError):
+        crypto.decrypt(b"not an archive", "pw")
+
+
+def test_crypto_rejects_empty_passphrase() -> None:
+    from erebus import crypto
+    with pytest.raises(ValueError):
+        crypto.encrypt(b"x", "")
+
+
+def test_build_archive_redacts_credential_secrets() -> None:
+    from erebus.reporting.archive import build_op_archive, seal, unseal
+    fw = Framework()
+    op_id = fw.op_new("e")
+    fw.store.add_finding("10.0.0.5", "mod", "f", severity="high")
+    fw.store.add_credential("10.0.0.5", "root", secret="SUPERSECRET")
+    bundle = build_op_archive(fw.store, op_id, notes_text="field notes")
+    assert len(bundle["findings"]) == 1
+    assert bundle["credentials"][0]["username"] == "root"
+    assert bundle["credentials"][0]["secret"] == "set"   # value never archived
+    assert bundle["notes"] == "field notes"
+    # seal/unseal roundtrip, and the plaintext secret is never in the sealed blob
+    blob = seal(bundle, "pw")
+    assert b"SUPERSECRET" not in blob
+    assert unseal(blob, "pw")["operation"]["id"] == op_id
+
+
+def test_framework_op_archive_writes_encrypted_file(tmp_path) -> None:
+    import hashlib
+
+    from erebus.reporting.archive import unseal
+    fw = Framework()
+    op_id = fw.op_new("e", codename="KITE")
+    fw.store.add_finding("10.0.0.5", "mod", "f", severity="high")
+    fw.store.add_credential("10.0.0.5", "root", secret="SUPERSECRET")
+    seen: list[Event] = []
+    fw.events.subscribe(ev.OP_ARCHIVE, seen.append)
+
+    out = tmp_path / "op.enc"
+    summary = fw.op_archive("pw", str(out))
+    assert summary["op"] == op_id and summary["records"]["findings"] == 1
+
+    blob = out.read_bytes()
+    assert hashlib.sha256(blob).hexdigest() == summary["sha256"]
+    assert b"SUPERSECRET" not in blob                    # secret never written
+    # event carries metadata but no passphrase/secret
+    assert len(seen) == 1 and "pw" not in str(seen[0].data)
+    # export, not delete: the op's data is still in the store
+    assert len(fw.store.findings()) == 1
+    # and it decrypts back
+    assert unseal(blob, "pw")["operation"]["codename"] == "KITE"
+
+
+def test_framework_op_archive_requires_op() -> None:
+    fw = Framework()
+    with pytest.raises(RuntimeError):
+        fw.op_archive("pw", "/tmp/should-not-write.enc")
+
+
+def test_console_op_archive(tmp_path, capsys, monkeypatch) -> None:
+    import getpass
+    monkeypatch.setattr(getpass, "getpass", lambda prompt="": "pw")
+    con = _console()
+    con.do_op("new e")
+    capsys.readouterr()
+    out_file = tmp_path / "e.enc"
+    con.do_op(f"archive {out_file}")
+    out = capsys.readouterr().out
+    assert "archived op" in out and out_file.exists()
+
+
+def test_archive_endpoint(tmp_path) -> None:
+    client, _ = _client()
+    out = tmp_path / "api.enc"
+    with client as c:
+        c.post("/operations", json={"name": "e"}, headers=AUTH)
+        assert c.post("/operations/archive",
+                      json={"passphrase": "pw", "path": str(out)}).status_code == 401
+        assert c.post("/operations/archive", json={"path": str(out)},
+                      headers=AUTH).status_code == 400  # missing passphrase
+        r = c.post("/operations/archive",
+                   json={"passphrase": "pw", "path": str(out)}, headers=AUTH)
+        assert r.status_code == 200 and out.exists()
+        assert r.json()["bytes"] > 0
+
+
+def test_archive_endpoint_no_op_is_409(tmp_path) -> None:
+    client, _ = _client()
+    with client as c:
+        assert c.post("/operations/archive",
+                      json={"passphrase": "pw", "path": str(tmp_path / "x.enc")},
+                      headers=AUTH).status_code == 409

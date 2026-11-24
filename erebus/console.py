@@ -171,6 +171,16 @@ class EreConsole(cmd.Cmd):
 
     do_exploit = do_run
 
+    def _notes_text(self) -> str:
+        """The engagement notes file's content, if any (same path the RPC uses)."""
+        env = os.environ.get("EREBUS_NOTES")
+        path = env if env else os.path.join(os.path.expanduser("~/.erebus"), "notes.md")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                return fh.read()
+        except OSError:
+            return ""
+
     def _op_counts(self, op_id: int) -> str:
         """A one-line tally of what an operation has produced so far."""
         st = self.fw.store
@@ -184,6 +194,7 @@ class EreConsole(cmd.Cmd):
     def do_op(self, arg: str) -> None:
         """op [status] | op new <name> [codename] | op end | op list
            op artifact <kind> <description> | op teardown [confirm]
+           op archive <path>
         Wrap work as a named operation; new records are tagged to it."""
         parts = shlex.split(arg)
         verb = parts[0] if parts else "status"
@@ -256,6 +267,36 @@ class EreConsole(cmd.Cmd):
                           f"manual reversal (listed; targets untouched)", "warn"))
             return
 
+        if verb == "archive":
+            if self.fw.current_op() is None:
+                print(col("  no operation open — start one with: op new <name>", "dim"))
+                return
+            if len(parts) < 2:
+                print("usage: op archive <path>")
+                return
+            import getpass
+            try:
+                pw = getpass.getpass("archive passphrase: ")
+                if pw != getpass.getpass("confirm passphrase: "):
+                    print(col("  passphrases did not match", "error"))
+                    return
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+            if not pw:
+                print(col("  empty passphrase — aborted", "error"))
+                return
+            try:
+                summary = self.fw.op_archive(pw, parts[1], notes_text=self._notes_text())
+            except (OSError, RuntimeError) as exc:
+                print(col(f"  archive failed: {exc}", "error"))
+                return
+            print(col(f"[+] archived op #{summary['op']} → {summary['path']} "
+                      f"({summary['bytes']} bytes, encrypted)", "good"))
+            print(col(f"  sha256: {summary['sha256']}", "dim"))
+            print(col(f"  records: {summary['records']}", "dim"))
+            return
+
         if verb == "status":
             op = self.fw.current_op()
             if op is None:
@@ -270,7 +311,7 @@ class EreConsole(cmd.Cmd):
             return
 
         print("usage: op [status | new <name> [codename] | end | list | "
-              "artifact <kind> <descr> | teardown [confirm]]")
+              "artifact <kind> <descr> | teardown [confirm] | archive <path>]")
 
     def do_scope(self, arg: str) -> None:
         """scope [show | allow <cidr> | load <file>]."""

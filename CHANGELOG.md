@@ -5,6 +5,17 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Encrypted engagement archival (platform roadmap Phase 3, part 3)**: export an
+  operation's logbook — its record, findings, jobs, sessions, evidence metadata, logged
+  artifacts, discovered accounts and the engagement notes — to a single encrypted file
+  for long-term storage. Archival is an **export**: nothing is deleted and the audit
+  trail stays intact. Credential **secret values are never written** (redacted to `"set"`
+  as over the API). Encryption is stdlib-only (`erebus/crypto.py`): `scrypt` KDF with a
+  random salt, an HMAC-SHA256 counter-mode keystream, and **encrypt-then-MAC** with an
+  independent key — a wrong passphrase or any tampering fails closed before any plaintext
+  is produced. Console `op archive <path>` (passphrase prompted, confirmed); token-gated
+  `POST /operations/archive`. The summary and `op.archive` event carry the path, size and
+  SHA-256 — never the passphrase or a secret.
 - **Engagement teardown (platform roadmap Phase 3, part 2)**: a reversible, fully-logged
   "leave the lab as you found it" step for an operation. Teardown closes the Erebus-side
   resources the op opened — live sessions and port-forwards — recording what it closed
