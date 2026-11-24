@@ -21,10 +21,22 @@ from .fuzz import (
     build_afl_argv,
     collect_crashes,
 )
+from .reproduce import (
+    CrashAnalysis,
+    RootCauseBucket,
+    bucket_by_root_cause,
+    build_gdb_argv,
+    classify_exploitability,
+    parse_debugger,
+    reproduce_crash,
+    stack_hash,
+)
 from .triage import CrashBucket, bucket_crashes, minimize_corpus, summarize
 
 __all__ = [
     "ResearchError",
     "CrashInput", "FuzzResult", "FuzzRunner", "FuzzSpec", "build_afl_argv", "collect_crashes",
     "CrashBucket", "bucket_crashes", "minimize_corpus", "summarize",
+    "CrashAnalysis", "RootCauseBucket", "parse_debugger", "stack_hash",
+    "classify_exploitability", "reproduce_crash", "bucket_by_root_cause", "build_gdb_argv",
 ]

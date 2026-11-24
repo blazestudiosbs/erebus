@@ -5,6 +5,7 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+<<<<<<< HEAD
 - **Exploit module type (red-team role)**: the module scaffolder now emits an **empty,
   scope-gated `exploit` skeleton** — `check()` + `exploit()` as TODOs, `RHOSTS` so the
   framework's deny-all scope gate applies automatically, and `Rank.MANUAL` — for an
@@ -13,6 +14,17 @@ this project uses [Semantic Versioning](https://semver.org).
   vulnerability probe). `payload`/`encoder` generation stays refused (no shellcode or
   evasion encoders), and the AI drafter still never writes an exploit body — an exploit
   skeleton is always the plain mechanical stub for the operator to fill in by hand.
+=======
+- **Crash reproduction + exploitability triage (researcher role)**: `research/reproduce.py`
+  closes the loop `triage.py` flagged — root-cause dedup by **stack hash** instead of
+  input bytes. It parses a debugger's output (signal, faulting address, backtrace),
+  hashes the top frames, and labels **exploitability** with a crashwalk/`!exploitable`-style
+  heuristic (stack-smash → high, write-to-controlled-address → high, invalid PC → high,
+  null deref → low, abort/assert → low, generic SIGSEGV → medium). `bucket_by_root_cause`
+  groups analysed crashes and ranks exploitable buckets first. Re-execution is **injected**
+  (`build_gdb_argv` runs gdb batch inside `erebus.sandbox`, never on the host); this is
+  read-only analysis — it classifies a crash, it does not build an exploit.
+>>>>>>> origin/feat/crash-reproducer
 - **Operation filter extended to the Homefield graph**: the shared operation dropdown
   now also scopes the Homefield knowledge graph. `build_graph(store, op_id=…)` restricts
   the estate to the hosts an operation touched (its op-tagged findings/credentials/
