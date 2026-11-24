@@ -419,3 +419,17 @@ def test_archive_endpoint_no_op_is_409(tmp_path) -> None:
         assert c.post("/operations/archive",
                       json={"passphrase": "pw", "path": str(tmp_path / "x.enc")},
                       headers=AUTH).status_code == 409
+
+
+# ---- part 4: dashboard Operations tab ------------------------------------
+
+def test_dashboard_serves_operations_tab() -> None:
+    """The served cockpit wires in the Operations tab (panel + nav + loader)."""
+    client, _ = _client()
+    with client as c:
+        html = c.get("/").text
+    assert 'id="opsview"' in html          # the panel
+    assert ">Ops<" in html                 # the top-nav tab
+    assert "Ops:'opsview'" in html         # PANELS wiring
+    assert "function opsInit(" in html     # the loader
+    assert "operations/teardown" in html   # drives the teardown endpoints

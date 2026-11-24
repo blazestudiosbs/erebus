@@ -341,13 +341,15 @@
     padding:4px 10px; font-family:ui-monospace,monospace; font-size:12px; color:#7be8ff;
     box-shadow:0 1px 0 var(--edge), inset 0 1px 0 rgba(201,163,255,.14); }
   .hf-reach .r .v{ color:#6f6690; }
+  .ops-actions{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 0; }
+  .ops-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Recon</span><span>Findings</span><span>OSINT</span><span>Homefield</span><span>Access</span><span>Jobs</span><span>Research</span><span>Report</span><span>Guide</span><span>Console</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Recon</span><span>Findings</span><span>OSINT</span><span>Homefield</span><span>Access</span><span>Jobs</span><span>Research</span><span>Ops</span><span>Report</span><span>Guide</span><span>Console</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -496,6 +498,23 @@
         <div id="research-body"><div class="empty">loading&hellip;</div></div>
       </div>
     </div>
+    <div class="view-panel" id="opsview" style="display:none">
+      <div class="pwrap">
+        <h2>Operations</h2>
+        <p class="psub">Wrap work as a named operation. New records (jobs, findings, sessions, credentials, evidence) tag to it automatically; teardown closes what the op opened; archive seals its logbook, encrypted. Authorized engagements only.</p>
+        <div class="tiles" id="ops-tiles" style="margin-bottom:16px"></div>
+        <div class="card" style="margin-bottom:12px"><h4>current operation</h4><div id="ops-current"><div class="empty">loading&hellip;</div></div></div>
+        <div class="osint-ctl">
+          <input id="ops-name" type="text" placeholder="operation name" autocomplete="off" spellcheck="false"/>
+          <input id="ops-code" type="text" placeholder="codename (optional)" autocomplete="off" spellcheck="false" style="flex:0 0 180px;min-width:120px"/>
+          <button class="btn sm" id="ops-new">Open op</button>
+        </div>
+        <div class="ops-actions" id="ops-actions"></div>
+        <div id="ops-note" class="psub" style="min-height:16px;margin:4px 0 0"></div>
+        <div class="card" style="margin-top:12px"><h4>teardown preview</h4><div id="ops-teardown"><div class="empty">&mdash;</div></div></div>
+        <div class="card" style="margin-top:12px"><h4>all operations</h4><div id="ops-list"><div class="empty">loading&hellip;</div></div></div>
+      </div>
+    </div>
     <div class="view-panel" id="reportsview" style="display:none">
       <div class="pwrap">
         <h2>Reports</h2>
@@ -580,11 +599,11 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
   var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules','DNS'], Findings:['Findings'], OSINT:['OSINT'],
     Access:['Sessions','Pivots','Creds'], Homefield:['Homefield'], Jobs:['Jobs'], Research:['Research'],
-    Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
+    Ops:['Ops'], Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
   var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
     Creds:'Credentials', Reports:'Export', Notes:'Notes' };
   var WRAP_SEL='.pwrap,.tgt-wrap,.notes-wrap,.term-wrap';
@@ -628,6 +647,7 @@
     else if(name==='Pivots'){ loadPivots(); pollTimer=setInterval(loadPivots,3000); }
     else if(name==='Creds'){ loadCreds(); pollTimer=setInterval(loadCreds,5000); }
     else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
+    else if(name==='Ops'){ opsInit(); }
     else if(name==='Reports'){ repStatus(''); }
     else if(name==='Notes'){ loadNotes(); }
     else if(name==='Terminal'){ var ti=document.getElementById('term-in'); if(ti) ti.focus(); }
@@ -970,6 +990,102 @@
           +reach.map(function(r){ return '<span class="r">'+escHtml(r.host)+' <span class="v">via '+escHtml((r.via||[]).join(','))+'</span></span>'; }).join('')+'</div>'; }
         html+='</div>'; out.innerHTML=html;
       }).catch(function(){ out.innerHTML='<div class="empty">request failed</div>'; }); }
+
+  // ---- Operations tab (engagement lifecycle) --------------------------
+  function opsNote(msg,color){ var n=document.getElementById('ops-note'); if(n){ n.textContent=msg||''; n.style.color=color||'#8a81ad'; } }
+  function opsTile(k,v,color){ return '<div class="tile"><div class="k">'+escHtml(k)+'</div><div class="v"'+(color?(' style="color:'+color+'"'):'')+'>'+v+'</div></div>'; }
+  function opsWire(id,fn){ var b=document.getElementById(id); if(b) b.onclick=fn; }
+  function opsInit(){
+    var nb=document.getElementById('ops-new'); if(nb && !nb._wired){ nb._wired=1; nb.onclick=opsNew; }
+    if(!hasTok()){ var c=document.getElementById('ops-current'); if(c) c.innerHTML='<div class="empty">connect to a live server first &mdash; run  erebus console --serve</div>'; return; }
+    opsLoad();
+  }
+  function opsLoad(){
+    fetch('operations',{headers:authH(),cache:'no-store'}).then(function(r){return r.json();}).then(opsRender)
+      .catch(function(){ var c=document.getElementById('ops-current'); if(c) c.innerHTML='<div class="empty">offline - connect to a live server</div>'; });
+  }
+  function opsRender(d){
+    var cur=d.current, ops=d.operations||[];
+    var active=ops.filter(function(o){return o.status==='active';}).length;
+    var tiles=document.getElementById('ops-tiles');
+    if(tiles) tiles.innerHTML = opsTile('operations', ops.length)
+      + opsTile('open', active, active?'#5dffa5':'#6f6690')
+      + opsTile('current', cur?('#'+cur.id):'none', cur?'#b98bff':'#6f6690')
+      + opsTile('status', cur?escHtml(cur.status):'idle');
+    var c=document.getElementById('ops-current');
+    if(c){
+      if(!cur){ c.innerHTML='<div class="empty">no operation open &mdash; name one below and press Open op</div>'; }
+      else {
+        var scope=[]; try{ scope=JSON.parse(cur.scope||'[]'); }catch(e){}
+        c.innerHTML='<div class="ops-head"><span class="hf-acct" style="min-width:0">'+escHtml(cur.codename||cur.name)+'</span>'
+          +'<span class="jmut">#'+cur.id+' &middot; '+escHtml(cur.status)+'</span></div>'
+          +(cur.codename && cur.name!==cur.codename ? '<div class="jmut" style="margin-bottom:6px">name: '+escHtml(cur.name)+'</div>' : '')
+          +'<div style="font-size:12px;color:#8a81ad">scope snapshot at open:</div>'
+          +'<div class="hf-reach">'+(scope.length?scope.map(function(r){return '<span class="r">'+escHtml(r)+'</span>';}).join(''):'<span class="jmut">empty (deny-all)</span>')+'</div>';
+      }
+    }
+    var act=document.getElementById('ops-actions');
+    if(act){
+      if(cur){
+        act.innerHTML='<button class="btn sm" id="ops-end">End op</button>'
+          +'<button class="btn sm" id="ops-tdprev">Preview teardown</button>'
+          +'<button class="btn sm" id="ops-td">Run teardown</button>'
+          +'<button class="btn sm" id="ops-arch">Archive&hellip;</button>';
+        opsWire('ops-end',opsEnd); opsWire('ops-tdprev',opsTeardownPreview);
+        opsWire('ops-td',opsTeardownRun); opsWire('ops-arch',opsArchive);
+      } else { act.innerHTML=''; var td=document.getElementById('ops-teardown'); if(td) td.innerHTML='<div class="empty">&mdash;</div>'; }
+    }
+    var list=document.getElementById('ops-list');
+    if(list){ list.innerHTML = ops.length ? ops.map(function(o){
+      var dot = o.status==='active' ? '<span style="color:#5dffa5">&#9679;</span>' : '<span style="color:#6f6690">&#9675;</span>';
+      return '<div class="hf-reuse-row">'+dot+'<span class="hf-acct">'+escHtml(o.codename||o.name)+'</span>'
+        +'<span class="jmut">#'+o.id+' &middot; '+escHtml(o.status)+'</span></div>'; }).join('')
+      : '<div class="empty">no operations yet</div>'; }
+  }
+  function opsNew(){
+    if(!hasTok()){ opsNote('connect to a live server first','#ff9d2e'); return; }
+    var name=(document.getElementById('ops-name').value||'').trim();
+    var code=(document.getElementById('ops-code').value||'').trim();
+    if(!name){ opsNote('enter an operation name','#ff9d2e'); return; }
+    apiPost('operations',{name:name,codename:code}).then(function(res){
+      if(res.ok){ document.getElementById('ops-name').value=''; document.getElementById('ops-code').value='';
+        opsNote('operation #'+res.j.op+' opened - new records tag to it','#5dffa5'); opsLoad(); }
+      else opsNote('failed: '+((res.j&&res.j.detail)||res.status),'#ff6a6a'); });
+  }
+  function opsEnd(){
+    if(!confirm('End the current operation? New records will no longer be tagged to it.')) return;
+    apiPost('operations/end',{}).then(function(res){
+      if(res.ok){ opsNote('operation #'+res.j.ended+' closed','#5dffa5'); opsLoad(); }
+      else opsNote('failed: '+((res.j&&res.j.detail)||res.status),'#ff6a6a'); });
+  }
+  function opsTeardownPreview(){
+    fetch('operations/teardown',{headers:authH(),cache:'no-store'}).then(function(r){return r.json();}).then(function(p){
+      var td=document.getElementById('ops-teardown'); if(!td) return;
+      if(!p.op){ td.innerHTML='<div class="empty">no operation open</div>'; return; }
+      var arts=p.artifacts||[];
+      var html='<div class="jmut">Erebus will close '+((p.sessions||[]).length)+' live session(s) and '+((p.forwards||[]).length)+' port-forward(s), fully logged.</div>';
+      if(arts.length){ html+='<div style="margin-top:8px;color:#ff9d2e">'+arts.length+' operator-logged artifact(s) to revert BY HAND (targets never touched):</div>';
+        html+=arts.map(function(a){ return '<div class="hf-reuse-row"><span class="hf-acct" style="min-width:0">['+escHtml(a.kind)+']</span><span class="hf-hosts">'+escHtml(a.descr)+(a.revert_hint?(' &mdash; '+escHtml(a.revert_hint)):'')+'</span></div>'; }).join(''); }
+      td.innerHTML=html;
+    }).catch(function(){ opsNote('teardown preview failed','#ff6a6a'); });
+  }
+  function opsTeardownRun(){
+    if(!confirm('Run teardown? This closes the op’s live sessions and port-forwards (logged). Targets are never touched; logged artifacts are left for you to revert.')) return;
+    apiPost('operations/teardown',{confirm:true}).then(function(res){
+      if(res.ok){ var r=res.j, pend=(r.pending_artifacts||[]).length;
+        opsNote('teardown: closed '+((r.closed_sessions||[]).length)+' session(s), '+((r.closed_forwards||[]).length)+' forward(s)'+(pend?('; '+pend+' artifact(s) need manual reversal'):''),'#5dffa5');
+        opsTeardownPreview(); opsLoad(); }
+      else opsNote('failed: '+((res.j&&res.j.detail)||res.status),'#ff6a6a'); });
+  }
+  function opsArchive(){
+    if(!hasTok()){ opsNote('connect to a live server first','#ff9d2e'); return; }
+    var path=prompt('Archive file path on the Erebus host:','~/.erebus/archives/op.enc'); if(!path) return;
+    var pw=prompt('Passphrase to encrypt the archive (not stored anywhere):'); if(!pw) return;
+    opsNote('archiving…','#8a81ad');
+    apiPost('operations/archive',{passphrase:pw,path:path}).then(function(res){
+      if(res.ok){ opsNote('archived op #'+res.j.op+' → '+res.j.path+' ('+res.j.bytes+' bytes, encrypted; sha256 '+String(res.j.sha256).slice(0,12)+'…)','#5dffa5'); }
+      else opsNote('failed: '+((res.j&&res.j.detail)||res.status),'#ff6a6a'); });
+  }
 
   // ---- OSINT tab (the ingested OSINT Framework directory) --------------
   var osintCatsLoaded=false, osintFlagsSet={}, osintLastMode=null, osintLastArg='';

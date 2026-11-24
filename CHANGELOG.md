@@ -5,6 +5,13 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Operations dashboard tab (platform roadmap Phase 3, part 4)**: a new **Ops** tab in
+  the 3D cockpit completes the engagement lifecycle in the UI. It shows operation stat
+  tiles, the current op with its scope snapshot, the list of all operations, and a live
+  teardown preview; and it drives the token-gated write path — open an op, end it, run
+  teardown, and archive to an encrypted file — reusing the existing tile/card/button
+  styling. Reads `/operations` and `/operations/teardown`; posts to `/operations`,
+  `/operations/end`, `/operations/teardown` and `/operations/archive`.
 - **Encrypted engagement archival (platform roadmap Phase 3, part 3)**: export an
   operation's logbook — its record, findings, jobs, sessions, evidence metadata, logged
   artifacts, discovered accounts and the engagement notes — to a single encrypted file
