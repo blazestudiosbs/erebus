@@ -394,6 +394,23 @@ def create_app(framework: Any, token: str | None = None,
         return {"target": target, "kind": detect_target_type(target),
                 "total": len(tools), "tools": [_osint_tool_dict(t) for t in tools[:300]]}
 
+    @app.get("/homefield", dependencies=[Depends(require_token)])
+    def knowledge_graph() -> dict[str, Any]:
+        """The homefield knowledge graph: host/service/account nodes + edges,
+        with credential-reuse modelled as shared account nodes. Read-only."""
+        from erebus.graph import build_graph
+        return build_graph(framework.store)
+
+    @app.get("/homefield/blast", dependencies=[Depends(require_token)])
+    def graph_blast(request: Request) -> dict[str, Any]:
+        """Blast radius from a host: accounts on it and the other hosts they reach
+        via credential reuse."""
+        from erebus.graph import blast_radius
+        host = request.query_params.get("host", "").strip()
+        if not host:
+            raise HTTPException(status_code=400, detail="missing 'host'")
+        return blast_radius(framework.store, host)
+
     @app.get("/wiki")
     async def wiki() -> dict[str, Any]:
         """The Erebus Field Guide: in-house methodology pages (static, read-only)."""

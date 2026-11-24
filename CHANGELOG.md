@@ -4,6 +4,14 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Added
+- **Homefield knowledge graph (platform roadmap Phase 1)**: `erebus/graph.py`
+  assembles the estate as host/service/account nodes with exposes/has-cred edges,
+  modelling credential **reuse** as one account node linked to every host it
+  unlocks (a lateral-movement path). `blast_radius()` reports, from a host, which
+  accounts are present and what other hosts they reach via reuse. Served at
+  token-gated `GET /homefield` and `/homefield/blast?host=`; a new **Homefield**
+  dashboard tab shows estate stats, the reuse pivot paths, and a blast-radius query.
 ### Changed
 - Dashboard consolidated from 13 flat tabs to 9 grouped tabs with a 3D sub-nav:
   Flow, Recon (Scope&Run + Modules), Findings, OSINT, Access (Sessions/Pivots/
