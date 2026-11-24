@@ -10,6 +10,24 @@ bench, and an LLM copilot.
 > you must explicitly allow your lab ranges. Using this against systems you don't
 > control is illegal in most jurisdictions.
 
+## Safety by design
+
+Erebus is built so the safe thing is the default:
+
+- **Scope gate, deny-all by default.** Every module run and every pivot is
+  checked against the allowlist first; nothing fires at a host you have not
+  explicitly put in scope. Lab/allow-all mode is a deliberate, logged opt-in.
+- **Research bench is find & triage only** — crash discovery and bucketing, no
+  exploit generation.
+- **No OS shell over HTTP by default.** The web Terminal runs Erebus console
+  verbs only; running commands on a caught session over the web API is opt-in
+  (`--enable-session-exec`) and every command is written to the audit log.
+- **Secrets stay in the vault** (OS keyring / encrypted file), never in code,
+  config, or logs. Discovered credentials are stored locally and redacted over
+  the API.
+- **Everything is logged.** Runs, findings, sessions, and audited actions land
+  in an append-only event log you can report from.
+
 ## Quickstart
 
 ```bash
