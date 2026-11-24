@@ -28,6 +28,22 @@ Erebus is built so the safe thing is the default:
 - **Everything is logged.** Runs, findings, sessions, and audited actions land
   in an append-only event log you can report from.
 
+## Private / out-of-tree modules
+
+Keep the framework public and your pre-disclosure or engagement-specific modules
+private: the loader discovers modules from outside the built-in tree, so private
+modules can live in a separate (private) repo or local dir and never touch this
+one.
+
+- put `*.py` modules on `$EREBUS_MODULE_PATH` (os.pathsep-separated dirs), and/or
+- drop them in `~/.erebus/modules/` (auto-loaded if it exists).
+
+They register exactly like built-ins (`<type>/<name>`); an external module may
+reuse a built-in key to shadow it. Loading a module runs its code, so only point
+these at directories you control. Keep discovered credentials, scopes, and loot
+out of git entirely (already covered by `.gitignore`) — version-control private
+*modules*, not engagement *data*.
+
 ## Quickstart
 
 ```bash
