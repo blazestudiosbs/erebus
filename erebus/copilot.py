@@ -26,7 +26,11 @@ SYSTEM_PROMPT = (
     "intel DB, etc.) - use it to answer setup/readiness questions. A 'Sessions' "
     "section lists caught shells; when asked about a session, identify it there and "
     "suggest the exact read-only session verb(s) (from the listed verbs) the "
-    "operator can run - you never run them yourself."
+    "operator can run - you never run them yourself.\n\n"
+    "An 'OSINT resources' section lists the OSINT Framework catalog categories and, "
+    "per known target, matching resources by input type. Use it to recommend "
+    "concrete OSINT resources (by name) and the matching `auxiliary/gather/*` "
+    "modules; prefer passive+free ones and say when a resource needs registration."
 )
 
 
@@ -137,6 +141,35 @@ def build_setup_context() -> str:
     return "\n".join(lines)
 
 
+def build_osint_context(framework: Any, max_hosts: int = 5) -> str:
+    """OSINT Framework categories + per-target resource hints for the copilot."""
+    try:
+        from .osint import Catalog
+        from .osint.catalog import detect_target_type
+        cat = Catalog()
+    except Exception:  # pragma: no cover - catalog optional/missing
+        return ""
+    lines = ["OSINT resources (OSINT Framework catalog):"]
+    cats = ", ".join(n for n, _ in cat.categories())
+    lines.append(f"  categories: {cats}")
+    try:
+        hosts = [dict(r).get("host", "") for r in framework.store.hosts()]
+    except Exception:  # pragma: no cover
+        hosts = []
+    seen = 0
+    for host in hosts:
+        if not host or seen >= max_hosts:
+            continue
+        tools = cat.filter(cat.for_target(host), passive=True, free=True, live=True)
+        if not tools:
+            continue
+        seen += 1
+        top = ", ".join(t.name for t in tools[:3])
+        lines.append(f"  {host} ({detect_target_type(host)}): {len(tools)} passive/free "
+                     f"resource(s) incl. {top}")
+    return "\n".join(lines)
+
+
 class Copilot:
     """Answer a question about the current engagement via an LLM connector."""
 
@@ -153,6 +186,9 @@ class Copilot:
         setup = build_setup_context()
         if setup:
             parts.append(setup)
+        osint = build_osint_context(self.framework)
+        if osint:
+            parts.append(osint)
         context = "\n\n".join(parts)
         prompt = f"Engagement state:\n{context}\n\nQuestion: {question}"
         return self.connector.complete(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens)

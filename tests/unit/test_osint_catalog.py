@@ -75,3 +75,23 @@ def test_vendored_arf_loads():
     assert len(c.all()) > 1000
     assert len(c.categories()) >= 25
     assert c.by_category("Username") and c.by_input("domain")
+
+
+def test_detect_target_type():
+    from erebus.osint.catalog import detect_target_type as d
+    assert d("8.8.8.8") == "ip"
+    assert d("2001:4860:4860::8888") == "ip"
+    assert d("caporia.co") == "domain"
+    assert d("bob@example.com") == "email"
+    assert d("+1 (313) 555-1212") == "phone"
+    assert d("John Smith") == "name"
+    assert d("johnsmith") == "username"
+    assert d("") == "unknown"
+
+
+def test_for_target_ranks_passive_free_live_first(tmp_path):
+    c = _mini(tmp_path)
+    tools = c.for_target("someone")          # username
+    assert tools and tools[0].name.startswith("Sherlock")   # passive+free+live leads
+    assert all("username" in t.input.lower() for t in tools)
+    assert c.for_target("") == []

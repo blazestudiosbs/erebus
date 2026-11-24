@@ -97,6 +97,20 @@
   .sess-verbs{ display:flex; flex-wrap:wrap; gap:6px; padding:9px 11px; border-bottom:1px solid #2a2340; }
   .btn.sm.verb{ color:#9cdbff; }
   .btn.sm:hover{ border-color:#ff5c7a; color:#ff8fa3; }
+  .osint-ctl{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center; }
+  .osint-ctl input[type=text], .osint-ctl input:not([type]){ flex:1; min-width:200px; background:rgba(16,12,28,0.9); border:1px solid #2a2340; border-radius:7px; padding:7px 10px; color:#e6e1ff; font-size:13px; outline:none; }
+  .osint-chk{ font-size:12px; color:#c9c2ea; display:flex; gap:4px; align-items:center; }
+  .osint-cats{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .ochip{ cursor:pointer; font-size:11px; padding:3px 9px; border:1px solid #2a2340; border-radius:999px; color:#c9c2ea; }
+  .ochip:hover{ border-color:var(--accent); }
+  .omut{ color:#6f6690; }
+  .ocard{ border:1px solid #201a33; border-radius:9px; padding:9px 12px; margin-bottom:8px; }
+  .ocard .otop a{ color:#9cdbff; text-decoration:none; font-weight:600; }
+  .ocard .otop a:hover{ text-decoration:underline; }
+  .omk{ color:#8a7fb0; font-size:11px; }
+  .ometa{ font-size:12px; color:#b7afd6; margin-top:3px; }
+  .obadge{ display:inline-block; padding:0 7px; border:1px solid; border-radius:999px; font-size:10px; text-transform:uppercase; margin-right:4px; }
+  .odesc{ font-size:12px; color:#8a82a8; margin-top:4px; }
   .btn:hover{ background:#241640; } .btn:disabled{ opacity:.5; cursor:default; }
   .btn.sec{ background:transparent; color:#9a92b8; }
   .btn.sec:hover{ background:rgba(26,16,48,0.6); }
@@ -204,7 +218,7 @@
 <div class="app">
   <div class="nav">
     <span class="brand">&#9670; Erebus</span>
-    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>Jobs</span><span>Sessions</span><span>Pivots</span><span>Creds</span><span>Research</span><span>Reports</span><span>Notes</span><span>Terminal</span></div>
+    <div class="tabs"><span class="on">Flow</span><span>Targets</span><span>Modules</span><span>Findings</span><span>OSINT</span><span>Jobs</span><span>Sessions</span><span>Pivots</span><span>Creds</span><span>Research</span><span>Reports</span><span>Notes</span><span>Terminal</span></div>
     <div class="sw">
       <button id="t-nyx" style="background:#a970ff" aria-label="Nyx"></button>
       <button id="t-styx" style="background:#3fb950" aria-label="Styx"></button>
@@ -261,6 +275,20 @@
         <h2>Findings</h2>
         <p class="psub">Live findings, most severe first. Updates as modules report.</p>
         <div id="find-list"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="view-panel" id="osintview" style="display:none">
+      <div class="pwrap">
+        <h2>OSINT</h2>
+        <p class="psub">The OSINT Framework directory, ingested. Search the catalog or enter one of your targets (domain / IP / username / email / phone) to get matching resources. Links open the external tool; (R)=registration, (T)=install, (API)=has an API.</p>
+        <div class="osint-ctl">
+          <input id="osint-q" placeholder="search the catalog&hellip;" autocomplete="off" spellcheck="false"/>
+          <input id="osint-target" placeholder="&hellip;or a target (caporia.co, 8.8.8.8, user)" autocomplete="off" spellcheck="false"/>
+          <label class="osint-chk"><input type="checkbox" id="osint-free"/> free</label>
+          <label class="osint-chk"><input type="checkbox" id="osint-passive"/> passive</label>
+        </div>
+        <div id="osint-cats" class="osint-cats"></div>
+        <div id="osint-list"><div class="empty">search, pick a category, or enter a target</div></div>
       </div>
     </div>
     <div class="view-panel" id="jobsview" style="display:none">
@@ -382,7 +410,7 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   var curView='Flow', pollTimer=null;
   function setView(name){
     if(name!=='Flow' && !PANELS[name]) return;
@@ -397,6 +425,7 @@
     if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
     else if(name==='Modules'){ loadModules(); }
     else if(name==='Findings'){ loadFindings(); pollTimer=setInterval(loadFindings,4000); }
+    else if(name==='OSINT'){ osintInit(); }
     else if(name==='Jobs'){ loadJobs(); pollTimer=setInterval(loadJobs,3000); }
     else if(name==='Sessions'){ loadSessions(); pollTimer=setInterval(loadSessions,4000); }
     else if(name==='Pivots'){ loadPivots(); pollTimer=setInterval(loadPivots,3000); }
@@ -623,6 +652,41 @@
       else if(res.status===403){ sessOut('<span class="err">'+escHtml((res.j&&res.j.detail)||'session exec disabled')+'</span>\n'); }
       else { sessOut('<span class="err">'+escHtml((res.j&&res.j.detail)||('HTTP '+res.status))+'</span>\n'); }
     }).catch(function(e){ sessOut('<span class="err">request failed: '+escHtml(String(e))+'</span>\n'); }); }
+
+  // ---- OSINT tab (the ingested OSINT Framework directory) --------------
+  var osintCatsLoaded=false;
+  function osintInit(){
+    var q=document.getElementById('osint-q'), tg=document.getElementById('osint-target');
+    if(q && !q._wired){ q._wired=1; q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ osintSearch(); } }); }
+    if(tg && !tg._wired){ tg._wired=1; tg.addEventListener('keydown',function(e){ if(e.key==='Enter'){ osintForTarget(); } }); }
+    if(!osintCatsLoaded){ fetch('osint/categories',{cache:'no-store'}).then(function(r){return r.json();})
+      .then(function(j){ osintCatsLoaded=true; var box=document.getElementById('osint-cats'); if(!box) return;
+        box.innerHTML=(j.categories||[]).map(function(c){ return '<span class="ochip" data-c="'+escHtml(c.name)+'">'+escHtml(c.name)+' <span class="omut">'+c.count+'</span></span>'; }).join('');
+        var cs=box.querySelectorAll('.ochip'); for(var i=0;i<cs.length;i++){ (function(el){ el.onclick=function(){ osintCategory(el.getAttribute('data-c')); }; })(cs[i]); }
+      }).catch(function(){}); }
+  }
+  function osintFlags(){ var p=[]; if(document.getElementById('osint-free').checked) p.push('free=1'); if(document.getElementById('osint-passive').checked) p.push('passive=1'); return p.join('&'); }
+  function osintSearch(){ var q=(document.getElementById('osint-q').value||'').trim();
+    osintFetch('osint/search?q='+encodeURIComponent(q)+'&'+osintFlags()); }
+  function osintCategory(cat){ osintFetch('osint/search?category='+encodeURIComponent(cat)+'&'+osintFlags()); }
+  function osintForTarget(){ var t=(document.getElementById('osint-target').value||'').trim(); if(!t) return;
+    osintFetch('osint/for?target='+encodeURIComponent(t)); }
+  function osintFetch(url){ var box=document.getElementById('osint-list'); if(box) box.innerHTML='<div class="empty">loading&hellip;</div>';
+    fetch(url,{cache:'no-store'}).then(function(r){return r.json();}).then(osintRender)
+      .catch(function(){ if(box) box.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
+  function osintRender(j){ var box=document.getElementById('osint-list'); if(!box) return;
+    var tools=j.tools||[];
+    var head=(j.kind?('<div class="omut" style="margin-bottom:8px">detected <b>'+escHtml(j.kind)+'</b> &middot; '+j.total+' resource(s)</div>'):('<div class="omut" style="margin-bottom:8px">'+(j.total||tools.length)+' resource(s)</div>'));
+    if(!tools.length){ box.innerHTML='<div class="empty">no matching resources</div>'; return; }
+    box.innerHTML=head+tools.map(function(t){
+      var op=(t.opsec==='passive')?'#36d399':(t.opsec==='active'?'#f2b84b':'#6f6690');
+      var mk=t.markers?(' <span class="omk">'+escHtml(t.markers)+'</span>'):'';
+      var href=escHtml(t.url);
+      return '<div class="ocard"><div class="otop"><a href="'+href+'" target="_blank" rel="noopener noreferrer">'+escHtml(t.name)+'</a>'+mk+'</div>'
+        +'<div class="ometa"><span class="obadge" style="color:'+op+';border-color:'+op+'">'+escHtml(t.opsec||'?')+'</span> '
+        +escHtml(t.category)+(t.input?(' &middot; in: '+escHtml(t.input)):'')+(t.pricing?(' &middot; '+escHtml(t.pricing)):'')+'</div>'
+        +(t.description?('<div class="odesc">'+escHtml(t.description)+'</div>'):'')+'</div>'; }).join('');
+  }
 
   // ---- Pivots tab (active port-forwards) -------------------------------
   function loadPivots(){ fetch('pivots',{cache:'no-store'}).then(function(r){return r.json();}).then(renderPivots)

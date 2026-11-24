@@ -54,6 +54,25 @@ _RPC_HINT = 'The RPC server needs FastAPI + uvicorn. Install with: pip install -
 _LIVE_HINT = "the live (amnesic) edition does not serve the dashboard"
 
 
+_OSINT_CATALOG = None
+
+
+def _osint_catalog():
+    global _OSINT_CATALOG
+    if _OSINT_CATALOG is None:
+        from erebus.osint import Catalog
+        _OSINT_CATALOG = Catalog()
+    return _OSINT_CATALOG
+
+
+def _osint_tool_dict(t) -> dict:
+    return {"name": t.name, "url": t.url, "category": t.category,
+            "subcategory": t.subcategory, "input": t.input, "output": t.output,
+            "opsec": t.opsec, "pricing": t.pricing, "status": t.status,
+            "api": t.api, "registration": t.registration,
+            "localInstall": t.local_install, "markers": t.markers}
+
+
 def create_app(framework: Any, token: str | None = None,
                cors_origins: list[str] | None = None,
                enable_session_exec: bool = False) -> Any:
@@ -342,6 +361,35 @@ def create_app(framework: Any, token: str | None = None,
             d["secret"] = "set" if d.get("secret") else ""
             out.append(d)
         return {"credentials": out}
+
+    @app.get("/osint/categories")
+    async def osint_categories() -> dict[str, Any]:
+        c = _osint_catalog()
+        return {"categories": [{"name": n, "count": k} for n, k in c.categories()]}
+
+    @app.get("/osint/search")
+    async def osint_search(request: Request) -> dict[str, Any]:
+        qp = request.query_params
+        c = _osint_catalog()
+        q = qp.get("q", "").strip()
+        cat = qp.get("category", "").strip()
+        tools = c.search(q) if q else (c.by_category(cat) if cat else c.all())
+        flags = {f: True for f in ("free", "api", "passive", "live")
+                 if qp.get(f) in ("1", "true", "yes")}
+        tools = c.filter(tools, **flags)
+        return {"total": len(tools),
+                "tools": [_osint_tool_dict(t) for t in tools[:300]]}
+
+    @app.get("/osint/for")
+    async def osint_for(request: Request) -> dict[str, Any]:
+        target = request.query_params.get("target", "").strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="missing 'target'")
+        from erebus.osint.catalog import detect_target_type
+        c = _osint_catalog()
+        tools = c.for_target(target)
+        return {"target": target, "kind": detect_target_type(target),
+                "total": len(tools), "tools": [_osint_tool_dict(t) for t in tools[:300]]}
 
     @app.post("/jobs", dependencies=[Depends(require_token)])
     async def start_job(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006

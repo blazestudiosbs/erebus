@@ -76,3 +76,15 @@ def test_ask_includes_sessions_and_setup():
     assert "session verbs" in fake.prompt.lower() or "whoami" in fake.prompt
     # guardrail: still told not to run things itself
     assert "never run" in fake.system.lower()
+
+
+def test_osint_context_and_ask_includes_it():
+    from erebus.copilot import build_osint_context
+    fw = Framework()
+    fw.store.add_target("caporia.co", status="scanned")
+    ctx = build_osint_context(fw)
+    assert "OSINT resources" in ctx and "categories:" in ctx
+    assert "caporia.co" in ctx                       # per-target hint
+    fake = _Fake()
+    Copilot(fw, fake).ask("what OSINT can I run?")
+    assert "OSINT resources" in fake.prompt
