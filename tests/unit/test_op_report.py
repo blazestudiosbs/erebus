@@ -1,8 +1,11 @@
 """Per-operation reporting from an archived logbook (reporting/op_report.py)."""
 from __future__ import annotations
 
+import sys
+
 import pytest
 
+from erebus import cli
 from erebus.console import EreConsole
 from erebus.core.framework import Framework
 from erebus.reporting import archive, op_report
@@ -116,3 +119,58 @@ def test_console_report_no_op_no_archive(capsys, tmp_path) -> None:
     con = _console()
     con.do_op(f"report {tmp_path / 'o.md'}")
     assert "no operation open" in capsys.readouterr().out
+
+
+# ---- CLI: erebus report --op ----------------------------------------------
+
+def _cli(monkeypatch, *argv: str) -> int:
+    monkeypatch.setattr(sys, "argv", ["erebus", *argv])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    return int(exc.value.code or 0)
+
+
+def _write_archive(tmp_path, passphrase: str = "pw"):
+    fw = Framework()
+    oid = fw.op_new("Acme", codename="KITE")
+    fw.store.add_finding("10.0.0.5", "mod", "x", severity="high", attack="T1046")
+    fw.store.add_credential("10.0.0.5", "root", secret="SECRETVAL")
+    arc = tmp_path / "op.enc"
+    fw.op_archive(passphrase, str(arc), op_id=oid)
+    return arc
+
+
+def test_cli_report_op_markdown_and_html(tmp_path, monkeypatch, capsys) -> None:
+    arc = _write_archive(tmp_path)
+    monkeypatch.setenv("EREBUS_ARCHIVE_PASSPHRASE", "pw")
+    md, html = tmp_path / "op.md", tmp_path / "op.html"
+    assert _cli(monkeypatch, "report", "--op", str(arc), "--out", str(md)) == 0
+    assert _cli(monkeypatch, "report", "--op", str(arc), "--out", str(html)) == 0
+    assert "Operation KITE" in md.read_text() and "SECRETVAL" not in md.read_text()
+    assert html.read_text().startswith("<!doctype html>")
+    assert "operation report" in capsys.readouterr().out
+
+
+def test_cli_report_op_passphrase_prompt(tmp_path, monkeypatch) -> None:
+    arc = _write_archive(tmp_path, passphrase="prompted")
+    monkeypatch.delenv("EREBUS_ARCHIVE_PASSPHRASE", raising=False)
+    import getpass
+    monkeypatch.setattr(getpass, "getpass", lambda prompt="": "prompted")
+    out = tmp_path / "op.md"
+    assert _cli(monkeypatch, "report", "--op", str(arc), "--out", str(out)) == 0
+    assert "Operation KITE" in out.read_text()
+
+
+def test_cli_report_op_errors_do_not_write(tmp_path, monkeypatch) -> None:
+    arc = _write_archive(tmp_path)
+    out = tmp_path / "o.md"
+    monkeypatch.setenv("EREBUS_ARCHIVE_PASSPHRASE", "wrong")
+    assert _cli(monkeypatch, "report", "--op", str(arc), "--out", str(out)) == 2
+    assert not out.exists()                                   # wrong passphrase
+    monkeypatch.setenv("EREBUS_ARCHIVE_PASSPHRASE", "pw")
+    assert _cli(monkeypatch, "report", "--op", str(arc),
+                "--out", str(tmp_path / "o.pdf")) == 2        # pdf unsupported for --op
+    assert _cli(monkeypatch, "report", "--op", str(tmp_path / "nope.enc"),
+                "--out", str(out)) == 2                       # missing archive
+    assert _cli(monkeypatch, "report", "--out", str(out)) == 2  # neither --store nor --op
+    assert not out.exists()
