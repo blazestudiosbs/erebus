@@ -4,6 +4,18 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Added
+- **Scope-gated SOCKS5 proxy (`socks`)**: the pivot as a *proxy*. `core/socks.py`'s
+  `SocksProxy` binds a local SOCKS5 listener; every CONNECT is scope-checked (an
+  out-of-scope target is refused with SOCKS reply `0x02`) and then opened through the active
+  framework **dialer** — directly, or relayed through a pivot session when `pivot via` is
+  set — so a browser, `curl`, or `proxychains` reaches the same internal hosts an Erebus
+  scan can. CONNECT-only, no-auth, IPv4/IPv6/domain. Driven by the console
+  `socks [on [lport] | off | status]`, the RPC `GET/POST /socks`, and a status line on the
+  dashboard Pivots tab. `op teardown` closes the proxy with the rest of the op's Erebus-side
+  infrastructure (`closed_socks`). It moves the operator's own traffic and runs no code on a
+  target.
+
 ### Fixed
 - **Op teardown resets the scan dialer**: tearing down an operation already closed its
   sessions and port-forwards, but left `Framework.dialer` pointing at a `SessionDialer`

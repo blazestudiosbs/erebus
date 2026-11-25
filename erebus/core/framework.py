@@ -20,6 +20,7 @@ from .options import OptionError
 from .pivot import PivotManager
 from .scope import Scope
 from .sessions import SessionManager
+from .socks import SocksProxy
 
 EDITIONS = ("workstation", "live")
 
@@ -53,6 +54,8 @@ class Framework:
         self.pivots = PivotManager(self.scope, self.events)
         # how modules open connections; swap to a SessionDialer to scan through a pivot
         self.dialer: Dialer = DirectDialer()
+        # a scope-gated SOCKS5 proxy that routes CONNECTs through the active dialer
+        self.socks = SocksProxy(self.scope, self.dial, self.events)
         # session journals: opt-in, and never in the Live edition (which keeps no logs)
         self.sessions = SessionManager(
             self.store, self.events,
@@ -154,9 +157,11 @@ class Framework:
             dict(a) for a in self.store.op_artifacts(op_id) if not a["reverted"]
         ]
         # the scan dialer is reset to direct if it was routed through a pivot,
-        # so no later scan tries to relay through a torn-down session
+        # so no later scan tries to relay through a torn-down session; a running
+        # SOCKS proxy is an Erebus-side listener that teardown also closes
         return {"op": op_id, "sessions": sessions, "forwards": forwards,
-                "artifacts": artifacts, "dialer": getattr(self.dialer, "name", "direct")}
+                "artifacts": artifacts, "dialer": getattr(self.dialer, "name", "direct"),
+                "socks": self.socks.running}
 
     def op_teardown(self, confirm: bool = False) -> dict[str, Any]:
         """Close the current op's Erebus-side resources (sessions, forwards),
@@ -183,6 +188,7 @@ class Framework:
         reset_dialer = self.dialer.name if self.dialer.name != "direct" else ""
         if reset_dialer:
             self.dialer = DirectDialer()
+        closed_socks = self.socks.stop()        # close the SOCKS listener too
 
         summary = {
             "op": plan["op"],
@@ -190,6 +196,7 @@ class Framework:
             "closed_sessions": closed_sessions,
             "closed_forwards": closed_forwards,
             "reset_dialer": reset_dialer,
+            "closed_socks": closed_socks,
             "pending_artifacts": plan["artifacts"],
         }
         self.events.publish(Event(ev.OP_TEARDOWN, {
@@ -197,6 +204,7 @@ class Framework:
             "closed_sessions": closed_sessions,
             "closed_forwards": closed_forwards,
             "reset_dialer": reset_dialer,
+            "closed_socks": closed_socks,
             "pending_artifacts": len(plan["artifacts"]),
         }))
         return summary

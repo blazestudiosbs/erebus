@@ -394,6 +394,28 @@ def create_app(framework: Any, token: str | None = None,
     async def close_pivot(fid: int) -> dict[str, Any]:
         return {"ok": framework.pivots.close(fid)}
 
+    @app.get("/socks")
+    async def socks_status() -> dict[str, Any]:
+        """The scope-gated SOCKS5 proxy's state (routes CONNECTs via the dialer)."""
+        return {**framework.socks.status(),
+                "dialer": getattr(framework.dialer, "name", "direct")}
+
+    @app.post("/socks", dependencies=[Depends(require_token)])
+    async def socks_control(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        action = str(payload.get("action", "")).strip()
+        if action == "stop":
+            return {"ok": framework.socks.stop(), **framework.socks.status()}
+        if action == "start":
+            if framework.socks.running:
+                return {"ok": True, **framework.socks.status()}
+            lport = int(payload.get("lport", 1080) or 1080)
+            try:
+                framework.socks.start(lport=lport)
+            except OSError as exc:
+                raise HTTPException(status_code=500, detail=f"could not bind: {exc}") from None
+            return {"ok": True, **framework.socks.status()}
+        raise HTTPException(status_code=400, detail="action must be 'start' or 'stop'")
+
     @app.get("/credentials")
     async def list_credentials() -> dict[str, Any]:
         """Discovered credentials. Secret VALUES are redacted here; the datastore

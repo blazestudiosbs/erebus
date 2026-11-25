@@ -95,7 +95,7 @@ box needs read access (a PAT or a read-only deploy key). Restart
 
 | Command | What it does |
 |---|---|
-| `ereconsole` / `erebus console` | Interactive console (`search`/`use`/`set`/`run`/`sessions`/`pivot`/`ask`/`scope`/…). `--serve` co-hosts the dashboard. |
+| `ereconsole` / `erebus console` | Interactive console (`search`/`use`/`set`/`run`/`sessions`/`pivot`/`socks`/`ask`/`scope`/…). `--serve` co-hosts the dashboard. |
 | `erebus rpc` | Serve the authenticated control API + 3D dashboard (`--token`, `--cors-origin`). |
 | `erebus intel` | CVE intel — NVD/KEV/EPSS ingest, lookup, correlate. |
 | `erebus report` | Engagement report → Markdown, HTML, or **PDF** (ATT&CK grouped by tactic). |
@@ -118,7 +118,7 @@ Every module runs through `Framework.run()`, which enforces the scope gate.
 
 ## Subsystems
 
-`core/` (events, options, modules, loader, scope gate, datastore, sessions, pivot dialer) ·
+`core/` (events, options, modules, loader, scope gate, datastore, sessions, pivot dialer, socks proxy) ·
 `lib/` (no-shell tool runner) · `intel/` (NVD/KEV/EPSS + EDB) ·
 `connectors/` (vault, Shodan, LLM) · `reporting/` (activity log, journal,
 evidence, MD/HTML/PDF) · `rpc/` (control API + dashboard) ·
