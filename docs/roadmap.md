@@ -59,6 +59,29 @@ catalogue.
   cells; green = exercised, dim = covered-not-run), console `attack` command, and a
   read `GET /attack` endpoint.
 
+## ✅ Research bench & lateral movement (post-Phase-4)
+Shipped since the phases above, same guardrails:
+- **Research bench** (`erebus/research/`) — fuzz orchestration (AFL++/libFuzzer/honggfuzz),
+  crash triage/reproduction/exploitability bucketing, a PoC *reproduction* harness, and
+  coordinated-disclosure advisory drafting. Find-and-triage only; it never weaponizes a crash.
+- **Read-only audit modules** — `scanner/http_headers`, `post/linux_persistence_audit`.
+- **Lateral-movement / pivot toolchain** — scope-gated port-forwards, multi-hop routes,
+  `pivot auto` session auto-routing, a pivot-aware scan dialer, pivot-aware web recon, a
+  scope-gated SOCKS5 proxy, live routes on the Homefield graph, teardown hygiene, and
+  pivot/proxy persistence + reconnect. Each hop/downstream/CONNECT is scope-gated.
+
+## 🚧 Phase 5 — Purple-team detection export
+Close the purple-team loop: turn ATT&CK **coverage** into defensive **output**.
+
+- [x] `erebus/reporting/detections.py` — for every covered technique (exercised first),
+  the telemetry to watch and a portable **Sigma-style** rule skeleton, built on the bundled
+  technique→tactic/name/data-source maps. Honest framing: starting points to tune, not
+  turnkey rules. `render_markdown` exports the set as a defensive companion doc.
+- [x] Surfaces — console `detections [| <Txxxx> | export <path>]`, read `GET /detections`,
+  and a **Detections** dashboard tab paired with ATT&CK coverage.
+- [ ] Follow-ups: per-data-source "what to log" onboarding guidance; detection export
+  bundled into the per-operation report.
+
 ---
 
 ## Follow-ups

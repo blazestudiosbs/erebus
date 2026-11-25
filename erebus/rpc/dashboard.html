@@ -539,6 +539,14 @@
         <div id="atk-matrix" class="atk-matrix"><div class="empty">loading&hellip;</div></div>
       </div>
     </div>
+    <div class="view-panel" id="detectionsview" style="display:none">
+      <div class="pwrap" style="max-width:1100px">
+        <h2>Detections</h2>
+        <p class="psub">The defender's half of the purple-team loop: for each ATT&amp;CK technique the modules cover (exercised ones first), the telemetry to watch and a Sigma-style rule skeleton to tune and deploy. Starting points, not turnkey rules.</p>
+        <div class="tiles" id="det-tiles" style="margin-bottom:16px"></div>
+        <div id="det-list"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
     <div class="view-panel" id="opsview" style="display:none">
       <div class="pwrap">
         <h2>Operations</h2>
@@ -640,13 +648,13 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Detections:'detectionsview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
   var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules','DNS'], Findings:['Findings'], OSINT:['OSINT'],
     Access:['Sessions','Pivots','Creds'], Homefield:['Homefield'], Jobs:['Jobs'], Research:['Research'],
-    'ATT&CK':['ATT&CK'], Ops:['Ops'], Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
+    'ATT&CK':['ATT&CK','Detections'], Ops:['Ops'], Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
   var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
-    Creds:'Credentials', Reports:'Export', Notes:'Notes' };
+    Creds:'Credentials', Reports:'Export', Notes:'Notes', 'ATT&CK':'Coverage', Detections:'Detections' };
   var WRAP_SEL='.pwrap,.tgt-wrap,.notes-wrap,.term-wrap';
   var lastMember={}; // remember the last member opened per group
   function groupOf(member){ for(var g in GROUPS){ if(GROUPS[g].indexOf(member)>=0) return g; } return 'Flow'; }
@@ -689,6 +697,7 @@
     else if(name==='Creds'){ opfInject('credsview',loadCreds); loadCreds(); pollTimer=setInterval(loadCreds,5000); }
     else if(name==='Research'){ loadResearch(); pollTimer=setInterval(loadResearch,5000); }
     else if(name==='ATT&CK'){ attackInit(); }
+    else if(name==='Detections'){ detectionsInit(); }
     else if(name==='Ops'){ opsInit(); }
     else if(name==='Reports'){ repStatus(''); }
     else if(name==='Notes'){ loadNotes(); }
@@ -1114,6 +1123,31 @@
       }).join('');
       return '<div class="atk-col"><div class="atk-head">'+escHtml(t.tactic)
         +'<span class="atk-cnt">'+t.exercised+'/'+t.techniques.length+'</span></div>'+cells+'</div>';
+    }).join('');
+  }
+
+  // ---- Detections tab (purple-team companion) --------------------------
+  function detectionsInit(){
+    if(!hasTok()){ var l=document.getElementById('det-list'); if(l) l.innerHTML='<div class="empty">connect to a live server first</div>'; return; }
+    fetch('detections',{headers:authH(),cache:'no-store'}).then(function(r){return r.json();}).then(detectionsRender)
+      .catch(function(){ var l=document.getElementById('det-list'); if(l) l.innerHTML='<div class="empty">offline - connect to a live server</div>'; });
+  }
+  function detectionsRender(d){
+    var s=d.stats||{}, tiles=document.getElementById('det-tiles');
+    if(tiles) tiles.innerHTML = atkTile('techniques', s.techniques||0)
+      + atkTile('exercised', s.exercised||0, (s.exercised?'#5dffa5':'#6f6690'))
+      + atkTile('data sources', s.data_sources||0);
+    var box=document.getElementById('det-list'), dets=d.detections||[];
+    if(!box) return;
+    if(!dets.length){ box.innerHTML='<div class="empty">no techniques covered yet</div>'; return; }
+    box.innerHTML = dets.map(function(e){
+      var clr=e.exercised?'#5dffa5':'#6f6690';
+      var head='<span class="jbadge" style="color:'+clr+';border-color:'+clr+'">'+(e.exercised?'exercised':'covered')+'</span> '
+        +'<b>'+escHtml(e.id)+'</b> '+escHtml(e.name)+' <span class="jmut">['+escHtml(e.tactic)+']</span>';
+      var meta='<div class="jmut" style="margin:4px 0 6px">watch: '+escHtml(e.watch)
+        +' &middot; logsource: '+escHtml((e.logsource||{}).category||'')+'</div>';
+      return '<div class="card" style="margin-bottom:12px"><div>'+head+'</div>'+meta
+        +'<pre style="white-space:pre-wrap;overflow-x:auto;margin:0;font-size:12px">'+escHtml(e.sigma||'')+'</pre></div>';
     }).join('');
   }
 
