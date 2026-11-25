@@ -84,13 +84,16 @@ class HttpHeaders(Auxiliary):
         threads = int(self.opt("THREADS", 50))        # type: ignore[call-overload]
         timeout = float(self.opt("TIMEOUT", 5.0))     # type: ignore[arg-type]
         jobs = [(h, p) for h in hosts for p in ports]
-        self.info_(f"auditing security headers on {len(jobs)} endpoint(s)")
+        via = getattr(self.framework.dialer, "name", "direct")
+        route = "" if via == "direct" else f" via {via}"
+        self.info_(f"auditing security headers on {len(jobs)} endpoint(s){route}")
 
         def work(hp: tuple[str, int]):
             host, port = hp
             scheme = _scheme_for(port, scheme_opt)
             try:
-                _status, headers, _body = _one(host, port, scheme, "/", timeout)
+                _status, headers, _body = _one(host, port, scheme, "/", timeout,
+                                               dial=self.dial)
             except Exception:  # noqa: BLE001 - any connect/TLS/HTTP error = no answer
                 return host, port, scheme, None
             return host, port, scheme, headers

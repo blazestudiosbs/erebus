@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import http.client
 import re
+import socket
 import ssl
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from erebus.core.module_base import Auxiliary, Rank
@@ -18,6 +20,9 @@ from erebus.modules.auxiliary.scanner.portscan import expand_hosts, parse_ports
 _TITLE = re.compile(rb"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _DEFAULT_HTTPS = {443, 8443, 4443, 9443}
 
+# a dialer opens the raw TCP socket (so a scan can be routed through a pivot)
+Dial = Callable[[str, int, float], socket.socket]
+
 
 def _scheme_for(port: int, override: str) -> str:
     if override in ("http", "https"):
@@ -25,13 +30,20 @@ def _scheme_for(port: int, override: str) -> str:
     return "https" if port in _DEFAULT_HTTPS else "http"
 
 
-def _one(host: str, port: int, scheme: str, path: str, timeout: float):
+def _one(host: str, port: int, scheme: str, path: str, timeout: float,
+         dial: Dial | None = None):
+    """One GET. When ``dial`` is given, the raw socket comes from it (pivot-aware)
+    instead of http.client dialing directly; for https it is wrapped in TLS here."""
     conn: http.client.HTTPConnection
     if scheme == "https":
         ctx = ssl._create_unverified_context()   # recon: accept self-signed lab certs
         conn = http.client.HTTPSConnection(host, port, timeout=timeout, context=ctx)
+        if dial is not None:
+            conn.sock = ctx.wrap_socket(dial(host, port, timeout), server_hostname=host)
     else:
         conn = http.client.HTTPConnection(host, port, timeout=timeout)
+        if dial is not None:
+            conn.sock = dial(host, port, timeout)
     try:
         conn.request("GET", path or "/", headers={"User-Agent": "erebus-http_probe/1"})
         resp = conn.getresponse()
@@ -41,8 +53,10 @@ def _one(host: str, port: int, scheme: str, path: str, timeout: float):
         conn.close()
 
 
-def probe(host: str, port: int, scheme: str, timeout: float, max_redirects: int = 5):
-    """Return a dict describing the web service, or None if nothing answered."""
+def probe(host: str, port: int, scheme: str, timeout: float, max_redirects: int = 5,
+          dial: Dial | None = None):
+    """Return a dict describing the web service, or None if nothing answered.
+    ``dial`` (when given) routes every request through a pivot."""
     path = "/"
     chain: list[str] = []
     status = 0
@@ -50,7 +64,7 @@ def probe(host: str, port: int, scheme: str, timeout: float, max_redirects: int 
     body = b""
     for _ in range(max_redirects + 1):
         try:
-            status, headers, body = _one(host, port, scheme, path, timeout)
+            status, headers, body = _one(host, port, scheme, path, timeout, dial=dial)
         except (OSError, http.client.HTTPException):
             return None
         loc = headers.get("Location") or headers.get("location")
@@ -95,12 +109,14 @@ class HttpProbe(Auxiliary):
         threads = int(self.opt("THREADS", 50))   # type: ignore[call-overload]
         timeout = float(self.opt("TIMEOUT", 5.0))  # type: ignore[arg-type]
         jobs = [(h, p) for h in hosts for p in ports]
-        self.info_(f"probing {len(jobs)} host:port web endpoint(s)")
+        via = getattr(self.framework.dialer, "name", "direct")
+        route = "" if via == "direct" else f" via {via}"
+        self.info_(f"probing {len(jobs)} host:port web endpoint(s){route}")
         found = 0
 
         def work(hp: tuple[str, int]):
             h, p = hp
-            return h, p, probe(h, p, _scheme_for(p, scheme_opt), timeout)
+            return h, p, probe(h, p, _scheme_for(p, scheme_opt), timeout, dial=self.dial)
 
         with ThreadPoolExecutor(max_workers=max(1, threads)) as ex:
             for fut in as_completed([ex.submit(work, hp) for hp in jobs]):

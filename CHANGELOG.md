@@ -5,6 +5,12 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Pivot-aware web recon**: the web scanners now follow the active pivot too. `_one`
+  (and `probe`) in `scanner/http_probe` take an optional dialer and open their TCP socket
+  through it — wrapping it in TLS for https — so `scanner/http_probe` and
+  `scanner/http_headers` route every request through `self.dial()` and reach web services
+  only a pivot host can see. Both label the path they took (`… via session:N`); with the
+  default direct dialer their behaviour is unchanged. Scope still gates RHOSTS.
 - **Session auto-routing (`pivot auto`)**: Erebus can now pick the pivot to a target for
   you. `core/autoroute.py`'s `plan_route(target, sessions)` finds the live session that can
   relay to a target by subnet adjacency (a controlled host reaches any host on its own
