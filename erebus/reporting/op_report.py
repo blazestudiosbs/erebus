@@ -19,6 +19,7 @@ from typing import Any
 
 from . import report as rpt
 from .attack import group_by_tactic
+from .detections import detections_for_techniques
 
 _TECHNIQUE = re.compile(r"T\d{4}(?:\.\d{3})?")
 
@@ -169,6 +170,19 @@ def render_markdown(bundle: dict[str, Any]) -> str:
     else:
         p.append("No ATT&CK techniques recorded.")
 
+    p += ["", "## Detections (purple-team)", "",
+          "_For each technique this operation exercised, the telemetry to watch and a "
+          "Sigma-style rule skeleton — tuning starting points, not turnkey rules._", ""]
+    dets = detections_for_techniques(techniques)
+    if dets:
+        for d in dets:
+            p.append(f"### {rpt._md(d['id'])} — {rpt._md(d['name'])}  ({rpt._md(d['tactic'])})")
+            p.append(f"- **Watch:** {rpt._md(d['watch'])}")
+            p.append(f"- **Data sources:** {rpt._md(', '.join(d['data_sources']) or '—')}")
+            p += ["```yaml", d["sigma"].rstrip("\n"), "```", ""]
+    else:
+        p.append("No techniques to derive detections from.")
+
     p += ["", "## Teardown artifacts", "",
           "_Things the operation created that an operator reverts by hand "
           "(Erebus never touches a target to revert them)._", ""]
@@ -281,6 +295,21 @@ def render_html(bundle: dict[str, Any], theme: str = "dark") -> str:
                 for t, n in techs) + "</div>")
     else:
         out.append('<p class="muted">No ATT&amp;CK techniques recorded.</p>')
+
+    out.append("<h2>Detections (purple-team)</h2>")
+    out.append('<p class="muted">For each technique this operation exercised, the telemetry '
+               "to watch and a Sigma-style rule skeleton &mdash; tuning starting points, not "
+               "turnkey rules.</p>")
+    dets = detections_for_techniques(techniques)
+    if dets:
+        for d in dets:
+            out.append(f"<h3>{h(d['id'])} &mdash; {h(d['name'])} "
+                       f'<span class="muted">({h(d["tactic"])})</span></h3>')
+            out.append(f'<p class="muted">Watch: {h(d["watch"])} &middot; data sources: '
+                       f'{h(", ".join(d["data_sources"]) or "—")}</p>')
+            out.append(f"<pre>{h(d['sigma'])}</pre>")
+    else:
+        out.append('<p class="muted">No techniques to derive detections from.</p>')
 
     out.append("<h2>Teardown artifacts</h2>")
     out.append('<p class="muted">Things the operation created that an operator reverts by '
@@ -426,6 +455,17 @@ def render_pdf(bundle: dict[str, Any]) -> bytes:
                for tactic, techs in group_by_tactic(techniques) for tech, n in techs])
     else:
         para("No ATT&CK techniques recorded.", muted=True)
+
+    heading("Detections (purple-team)")
+    para("Telemetry to watch per exercised technique; full Sigma-style rules are in the "
+         "Markdown/HTML export.", muted=True)
+    dets = detections_for_techniques(techniques)
+    if dets:
+        table(["Technique", "Tactic", "Logsource", "Watch"],
+              [[f"{d['id']} {d['name']}", d["tactic"], d["logsource"]["category"], d["watch"]]
+               for d in dets])
+    else:
+        para("No techniques to derive detections from.", muted=True)
 
     heading("Teardown artifacts")
     para("Things the operation created that an operator reverts by hand "

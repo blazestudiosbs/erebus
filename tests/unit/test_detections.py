@@ -7,6 +7,7 @@ from erebus.console import EreConsole
 from erebus.core.framework import Framework
 from erebus.reporting.detections import (
     build_detections,
+    detections_for_techniques,
     render_markdown,
     render_sigma,
 )
@@ -62,6 +63,22 @@ def test_render_markdown():
     md = render_markdown(build_detections(_fw().loader, _fw().store))
     assert md.startswith("# Erebus purple-team detections")
     assert "```yaml" in md
+
+
+def test_detections_for_techniques_is_loader_free():
+    # builds from the bundled maps alone — used by the per-op report
+    dets = detections_for_techniques(["T1046", "t1595.002", "T1046"])
+    ids = [d["id"] for d in dets]
+    assert ids == ["T1046", "T1595.002"]            # deduped, upper, sorted
+    assert all(d["exercised"] for d in dets)
+    d0 = next(d for d in dets if d["id"] == "T1046")
+    assert d0["name"] == "Network Service Discovery" and d0["tactic"] == "Discovery"
+    assert "title:" in d0["sigma"]
+
+
+def test_detections_for_techniques_empty():
+    assert detections_for_techniques([]) == []
+    assert detections_for_techniques(None) == []
 
 
 # --- console ------------------------------------------------------------
