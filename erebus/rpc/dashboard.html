@@ -476,6 +476,14 @@
         <div id="find-list"><div class="empty">loading&hellip;</div></div>
       </div>
     </div>
+    <div class="view-panel" id="remediationview" style="display:none">
+      <div class="pwrap" style="max-width:1100px">
+        <h2>Remediation</h2>
+        <p class="psub">Findings ranked by risk = severity &times; exposure &times; reachability &mdash; what to fix first, and why. Each carries a priority (P1&ndash;P4), the factors behind its score, and concrete remediation guidance.</p>
+        <div class="tiles" id="rem-tiles" style="margin-bottom:16px"></div>
+        <div id="rem-list"><div class="empty">loading&hellip;</div></div>
+      </div>
+    </div>
     <div class="view-panel" id="osintview" style="display:none">
       <div class="pwrap">
         <h2>OSINT</h2>
@@ -648,9 +656,9 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Detections:'detectionsview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', Remediation:'remediationview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Detections:'detectionsview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
-  var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules','DNS'], Findings:['Findings'], OSINT:['OSINT'],
+  var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules','DNS'], Findings:['Findings','Remediation'], OSINT:['OSINT'],
     Access:['Sessions','Pivots','Creds'], Homefield:['Homefield'], Jobs:['Jobs'], Research:['Research'],
     'ATT&CK':['ATT&CK','Detections'], Ops:['Ops'], Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
   var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
@@ -689,6 +697,7 @@
     else if(name==='DNS'){ dnsInit(); }
     else if(name==='Guide'){ wikiInit(); }
     else if(name==='Findings'){ opfInject('findingsview',loadFindings); loadFindings(); pollTimer=setInterval(loadFindings,4000); }
+    else if(name==='Remediation'){ remediationInit(); }
     else if(name==='OSINT'){ osintInit(); }
     else if(name==='Homefield'){ opfInject('homefieldview',hfInit); hfInit(); }
     else if(name==='Jobs'){ opfInject('jobsview',loadJobs); loadJobs(); pollTimer=setInterval(loadJobs,3000); }
@@ -1162,6 +1171,34 @@
       return '<div class="card" style="margin-bottom:12px"><div>'+head+'</div>'+meta
         +'<pre style="white-space:pre-wrap;overflow-x:auto;margin:0;font-size:12px">'+escHtml(e.sigma||'')+'</pre></div>';
     }).join('');
+  }
+
+  // ---- Remediation tab (risk-scored fix plan) --------------------------
+  function remediationInit(){
+    if(!hasTok()){ var l=document.getElementById('rem-list'); if(l) l.innerHTML='<div class="empty">connect to a live server first</div>'; return; }
+    fetch('remediation',{headers:authH(),cache:'no-store'}).then(function(r){return r.json();}).then(remediationRender)
+      .catch(function(){ var l=document.getElementById('rem-list'); if(l) l.innerHTML='<div class="empty">offline - connect to a live server</div>'; });
+  }
+  function remediationRender(d){
+    var s=d.stats||{}, tiles=document.getElementById('rem-tiles');
+    if(tiles) tiles.innerHTML = atkTile('findings', s.findings||0)
+      + atkTile('P1', s.P1||0, (s.P1?'#ff3b5c':'#6f6690'))
+      + atkTile('P2', s.P2||0, (s.P2?'#ff9d2e':'#6f6690'))
+      + atkTile('P3', s.P3||0) + atkTile('top score', s.top_score||0);
+    var box=document.getElementById('rem-list'), items=d.items||[];
+    if(!box) return;
+    if(!items.length){ box.innerHTML='<div class="empty">no findings to prioritize yet</div>'; return; }
+    var PC={P1:'#ff3b5c',P2:'#ff9d2e',P3:'#4db5ff',P4:'#6f6690'};
+    box.innerHTML='<table class="jtbl"><thead><tr><th>pri</th><th>score</th><th>sev</th><th>host</th><th>finding</th><th>remediation</th></tr></thead><tbody>'
+      +items.map(function(i){
+        var f=i.factors||{}, pc=PC[i.priority]||'#6f6690';
+        var tip='exposure='+(f.exposure||0)+' reach='+(f.reachability||0)
+          +(f.cvss!=null?(' cvss='+f.cvss):'')+(f.kev?' KEV':'');
+        return '<tr><td><span class="jbadge" style="color:'+pc+';border-color:'+pc+'">'+escHtml(i.priority)+'</span></td>'
+          +'<td class="jnum" title="'+escHtml(tip)+'">'+escHtml(i.score)+'</td>'
+          +'<td>'+escHtml(i.severity||'')+'</td><td>'+escHtml(i.host||'')+'</td>'
+          +'<td>'+escHtml(i.title||'')+'</td><td class="jmut">'+escHtml(i.guidance||'')+'</td></tr>';
+      }).join('')+'</tbody></table>';
   }
 
   // ---- Operations tab (engagement lifecycle) --------------------------

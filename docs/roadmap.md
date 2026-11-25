@@ -87,6 +87,22 @@ Close the purple-team loop: turn ATT&CK **coverage** into defensive **output**.
   (`detections log`), in `GET /detections`, on the Detections tab, and folded into the
   per-op report and the Markdown export.
 
+## ✅ Phase 6 — Remediation & risk scoring
+Turn findings into a prioritized fix plan: *what do we fix first, and why.*
+
+- [x] `erebus/reporting/remediation.py` — `score_finding()` scores every finding as
+  **severity × exposure × reachability**, sharpened by CVSS/KEV/EPSS; `build_remediation()`
+  derives exposure (services on the host) and reachability (the host's blast radius from
+  reused accounts, via the Homefield graph), ranks the findings, and buckets them P1–P4.
+  `remediation_guidance()` gives concrete per-finding fixes (CVE → patch, creds → rotate +
+  MFA, headers → set them, SUID/sudo → least privilege, open port → firewall, …).
+- [x] Surfaces — console `remediation [| export <path>]`, read `GET /remediation` (`?op=`
+  scopes it), and a **Remediation** dashboard tab paired with Findings. A **Remediation
+  plan** section is folded into the per-operation report (Markdown/HTML/PDF), scored
+  loader-free from the archived bundle.
+
+Derived/read-only; it recommends, it changes nothing on a target.
+
 ---
 
 ## Follow-ups
