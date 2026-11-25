@@ -18,7 +18,7 @@ import socket
 import struct
 import threading
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from . import events as ev
 from .scope import ScopeError
@@ -86,10 +86,13 @@ def reply(sock: socket.socket, code: int) -> None:
 class SocksProxy:
     """A local SOCKS5 listener; each CONNECT is scope-gated then dialed."""
 
-    def __init__(self, scope: Scope, dial: Dial, events: EventBus) -> None:
+    _SETTING = "socks.lport"
+
+    def __init__(self, scope: Scope, dial: Dial, events: EventBus, store: Any = None) -> None:
         self._scope = scope
         self._dial = dial
         self._events = events
+        self._store = store
         self._srv: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self.lhost = ""
@@ -114,6 +117,7 @@ class SocksProxy:
         self._thread = threading.Thread(target=self._serve, args=(srv,), daemon=True,
                                         name="erebus-socks")
         self._thread.start()
+        self._persist(self.lport)
         self._events.publish(ev.Event(ev.SOCKS_OPEN, {"lhost": self.lhost, "lport": self.lport}))
         return self.lhost, self.lport
 
@@ -125,8 +129,31 @@ class SocksProxy:
             srv.close()
         except OSError:
             pass
+        self._persist(None)
         self._events.publish(ev.Event(ev.SOCKS_CLOSE, {"lport": self.lport}))
         return True
+
+    def _persist(self, lport: int | None) -> None:
+        if self._store is None:
+            return
+        try:
+            self._store.set_setting(self._SETTING, str(lport) if lport else None)
+        except Exception:  # noqa: BLE001 - best-effort, never fatal
+            pass
+
+    def reconnect(self) -> dict:
+        """Restart the proxy on the port saved from a previous run, if any. The
+        listener has no session dependency, so it always comes straight back."""
+        if self.running or self._store is None:
+            return {"restarted": False, "lport": self.lport}
+        raw = self._store.get_setting(self._SETTING)
+        if not raw or not str(raw).isdigit():
+            return {"restarted": False, "lport": 0}
+        try:
+            _host, port = self.start(lport=int(raw))
+        except OSError:
+            return {"restarted": False, "lport": int(raw)}
+        return {"restarted": True, "lport": port}
 
     def status(self) -> dict:
         return {"running": self.running, "lhost": self.lhost, "lport": self.lport,

@@ -51,11 +51,12 @@ class Framework:
         self.store.mark_running_interrupted()
         self.loader = Loader()
         self.scope = Scope()
-        self.pivots = PivotManager(self.scope, self.events)
+        # forwards persist their reconnect specs to the store (survives a restart)
+        self.pivots = PivotManager(self.scope, self.events, store=self.store)
         # how modules open connections; swap to a SessionDialer to scan through a pivot
         self.dialer: Dialer = DirectDialer()
         # a scope-gated SOCKS5 proxy that routes CONNECTs through the active dialer
-        self.socks = SocksProxy(self.scope, self.dial, self.events)
+        self.socks = SocksProxy(self.scope, self.dial, self.events, store=self.store)
         # session journals: opt-in, and never in the Live edition (which keeps no logs)
         self.sessions = SessionManager(
             self.store, self.events,
@@ -88,6 +89,17 @@ class Framework:
         to route module connections through a pivot. Modules reach this via
         ``self.dial(...)`` so a scan can follow the configured path."""
         return self.dialer.dial(host, port, timeout)
+
+    def pivot_reconnect(self) -> dict[str, Any]:
+        """Re-establish pivots (and the SOCKS proxy) saved from a previous run.
+
+        Pivots and the proxy are in-memory, so a process restart drops them; this
+        rebinds what it can from the persisted specs. Direct forwards and the SOCKS
+        listener come straight back; a session/route forward returns as *pending*
+        until its shell is caught again (re-run this once sessions are live)."""
+        result = self.pivots.reconnect(self.sessions.get)
+        result["socks"] = self.socks.reconnect()
+        return result
 
     # --- engagement lifecycle (operations) ---------------------------------
     def op_new(self, name: str, codename: str = "") -> int:

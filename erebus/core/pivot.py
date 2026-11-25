@@ -17,6 +17,8 @@ through the local port - it is not an implant and runs no code on its own.
 """
 from __future__ import annotations
 
+import builtins
+import json
 import socket
 import threading
 from collections.abc import Callable
@@ -26,11 +28,28 @@ from time import time
 from typing import TYPE_CHECKING, Any
 
 from . import events as ev
+from .scope import ScopeError
 
 if TYPE_CHECKING:
     from .events import EventBus
     from .scope import Scope
     from .sessions import Session
+
+
+def _parse_via(via: str) -> tuple[str, list[int]]:
+    """Decode a forward's ``via`` tag into (kind, session_ids).
+
+    ``direct`` -> ("direct", []), ``session:3`` -> ("session", [3]),
+    ``route:1>2`` -> ("route", [1, 2])."""
+    if via.startswith("session:"):
+        try:
+            return "session", [int(via.split(":", 1)[1])]
+        except ValueError:
+            return "direct", []
+    if via.startswith("route:"):
+        ids = [p for p in via.split(":", 1)[1].split(">") if p.strip().isdigit()]
+        return "route", [int(p) for p in ids]
+    return "direct", []
 
 # a relay returns a socket already connected to the downstream target
 Relay = Callable[[], socket.socket]
@@ -66,11 +85,20 @@ class Forward:
 
 
 class PivotManager:
-    """Owns active port-forwards. Scope-gates every downstream before binding."""
+    """Owns active port-forwards. Scope-gates every downstream before binding.
 
-    def __init__(self, scope: Scope, events: EventBus) -> None:
+    When a persistent ``store`` is given, each open forward's reconnect spec is
+    saved to the settings table, so ``reconnect()`` can re-establish them after a
+    restart (direct forwards fully; session/route forwards once their shells are
+    caught again).
+    """
+
+    _SETTING = "pivot.forwards"
+
+    def __init__(self, scope: Scope, events: EventBus, store: Any = None) -> None:
         self._scope = scope
         self._events = events
+        self._store = store
         self._fwds: dict[int, Forward] = {}
         self._servers: dict[int, socket.socket] = {}
         self._threads: dict[int, threading.Thread] = {}
@@ -99,6 +127,7 @@ class PivotManager:
         t.start()
         self._events.publish(ev.Event(ev.PIVOT_OPEN, {
             "id": fid, "rhost": rhost, "rport": rport, "lport": bound_port, "via": via}))
+        self._persist()
         return fwd
 
     def open_route(self, sessions: list[Session], rhost: str, rport: int,
@@ -182,12 +211,75 @@ class PivotManager:
         if fwd is not None:
             fwd.status = "closed"
             self._events.publish(ev.Event(ev.PIVOT_CLOSE, {"id": fid}))
+            self._persist()
             return True
         return False
 
     def close_all(self) -> None:
         for fid in [f.id for f in self.list()]:
             self.close(fid)
+
+    # --- persistence / reconnect -------------------------------------------
+    def _persist(self) -> None:
+        """Save the reconnect spec of every open forward to the settings store."""
+        if self._store is None:
+            return
+        specs = [{"rhost": f.rhost, "rport": f.rport, "lport": f.lport, "via": f.via}
+                 for f in self.list()]
+        try:
+            self._store.set_setting(self._SETTING, json.dumps(specs))
+        except Exception:  # noqa: BLE001 - persistence is best-effort, never fatal
+            pass
+
+    def saved_specs(self) -> builtins.list[dict]:
+        """The forward specs saved from a previous run (empty if none/unreadable)."""
+        if self._store is None:
+            return []
+        raw = self._store.get_setting(self._SETTING)
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+            return [d for d in data if isinstance(d, dict)]
+        except (ValueError, TypeError):
+            return []
+
+    def reconnect(self, resolve_session: Callable[[int], Any]) -> dict:
+        """Re-establish forwards saved from a previous run.
+
+        ``resolve_session(id)`` returns a live session for an id or None. Direct
+        forwards are rebound immediately; a session/route forward is rebound only
+        once all its sessions are live again, otherwise it is reported as pending
+        (its shell must be re-caught first). Already-open local ports are skipped.
+        """
+        open_lports = {f.lport for f in self.list()}
+        reconnected: builtins.list[dict] = []
+        pending: builtins.list[dict] = []
+        failed: builtins.list[dict] = []
+        for spec in self.saved_specs():
+            via = str(spec.get("via", "direct"))
+            lport = int(spec.get("lport", 0) or 0)
+            rhost, rport = str(spec.get("rhost", "")), int(spec.get("rport", 0) or 0)
+            if not rhost or not rport or lport in open_lports:
+                continue
+            kind, sids = _parse_via(via)
+            try:
+                if kind == "direct":
+                    self.open(rhost, rport, lport=lport)
+                else:
+                    sessions = [resolve_session(sid) for sid in sids]
+                    if any(s is None or not getattr(s, "alive", False) for s in sessions):
+                        pending.append(spec)
+                        continue
+                    if kind == "route":
+                        self.open_route(sessions, rhost, rport, lport=lport)
+                    else:  # single session
+                        relay = session_socat_relay(sessions[0], rhost, rport, rport)
+                        self.open(rhost, rport, lport=lport, relay=relay, via=via)
+                reconnected.append(spec)
+            except (ScopeError, OSError, ValueError):
+                failed.append(spec)
+        return {"reconnected": reconnected, "pending": pending, "failed": failed}
 
 
 def socat_relay_command(rhost: str, rport: int, relay_port: int) -> str:

@@ -536,6 +536,19 @@ class EreConsole(cmd.Cmd):
             print(col(f"  pivot {fwd.id}: {fwd.lhost}:{fwd.lport} -> {target}:{rport} "
                       f"[{fwd.via}]", "good"))
             return
+        if parts[0] == "reconnect":
+            res = self.fw.pivot_reconnect()
+            rc, pend, fail = res["reconnected"], res["pending"], res["failed"]
+            sx = res.get("socks", {})
+            print(col(f"  reconnected {len(rc)} forward(s)"
+                      + (f", socks on :{sx['lport']}" if sx.get("restarted") else ""), "good"))
+            for spec in pend:
+                print(col(f"  pending {spec['rhost']}:{spec['rport']} [{spec['via']}] "
+                          f"— needs its session(s) live again", "warn"))
+            for spec in fail:
+                print(col(f"  failed {spec['rhost']}:{spec['rport']} [{spec['via']}]",
+                          "error"))
+            return
         if parts[0] == "close" and len(parts) > 1:
             ok = pm.close(int(parts[1]))
             print(f"closed pivot {parts[1]}" if ok else col(f"  no pivot {parts[1]}", "warn"))
@@ -583,7 +596,7 @@ class EreConsole(cmd.Cmd):
             print(col(f"  pivot {fwd.id}: {chain}  [{fwd.via}]", "good"))
             return
         print("usage: pivot [list | open <rhost> <rport> [-s sid|-r sid,sid][-l lport] "
-              "| auto <target> <rport> | close <id> | via <sid>|off]")
+              "| auto <target> <rport> | reconnect | close <id> | via <sid>|off]")
 
     def do_socks(self, arg: str) -> None:
         """socks | socks on [lport] | socks off
