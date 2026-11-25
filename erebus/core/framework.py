@@ -137,7 +137,8 @@ class Framework:
         """
         current = self.store.current_operation()
         if current is None:
-            return {"op": None, "sessions": [], "forwards": [], "artifacts": []}
+            return {"op": None, "sessions": [], "forwards": [], "artifacts": [],
+                    "dialer": getattr(self.dialer, "name", "direct")}
         op_id = int(current["id"])
         # live sessions whose stored row is tagged to this op
         op_of_session = {int(r["id"]): r["op_id"] for r in self.store.sessions()}
@@ -152,8 +153,10 @@ class Framework:
         artifacts = [
             dict(a) for a in self.store.op_artifacts(op_id) if not a["reverted"]
         ]
+        # the scan dialer is reset to direct if it was routed through a pivot,
+        # so no later scan tries to relay through a torn-down session
         return {"op": op_id, "sessions": sessions, "forwards": forwards,
-                "artifacts": artifacts}
+                "artifacts": artifacts, "dialer": getattr(self.dialer, "name", "direct")}
 
     def op_teardown(self, confirm: bool = False) -> dict[str, Any]:
         """Close the current op's Erebus-side resources (sessions, forwards),
@@ -175,17 +178,25 @@ class Framework:
             if self.pivots.close(int(f["id"])):
                 closed_forwards.append(int(f["id"]))
 
+        # reset the scan dialer: it may route through a session just closed, so
+        # leaving it set would make later scans relay through a torn-down pivot
+        reset_dialer = self.dialer.name if self.dialer.name != "direct" else ""
+        if reset_dialer:
+            self.dialer = DirectDialer()
+
         summary = {
             "op": plan["op"],
             "executed": True,
             "closed_sessions": closed_sessions,
             "closed_forwards": closed_forwards,
+            "reset_dialer": reset_dialer,
             "pending_artifacts": plan["artifacts"],
         }
         self.events.publish(Event(ev.OP_TEARDOWN, {
             "op": plan["op"],
             "closed_sessions": closed_sessions,
             "closed_forwards": closed_forwards,
+            "reset_dialer": reset_dialer,
             "pending_artifacts": len(plan["artifacts"]),
         }))
         return summary

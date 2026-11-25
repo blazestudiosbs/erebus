@@ -317,8 +317,10 @@ class EreConsole(cmd.Cmd):
                 return
             if not confirm:
                 print(col("◆ teardown plan (preview — add 'confirm' to execute)", "accent"))
+                reset = ("" if res.get("dialer", "direct") == "direct"
+                         else f", reset scan path ({res['dialer']} → direct)")
                 print(col(f"  close {len(res['sessions'])} live session(s), "
-                          f"{len(res['forwards'])} port-forward(s)", "dim"))
+                          f"{len(res['forwards'])} port-forward(s){reset}", "dim"))
                 if res["artifacts"]:
                     print(col(f"  {len(res['artifacts'])} operator-logged artifact(s) "
                               f"to revert BY HAND (Erebus won't touch targets):", "warn"))
@@ -326,8 +328,10 @@ class EreConsole(cmd.Cmd):
                         hint = f" — {a['revert_hint']}" if a["revert_hint"] else ""
                         print(col(f"    · [{a['kind']}] {a['descr']}{hint}", "dim"))
                 return
+            reset = (f", reset scan path ({res['reset_dialer']} → direct)"
+                     if res.get("reset_dialer") else "")
             print(col(f"[+] teardown: closed {len(res['closed_sessions'])} session(s), "
-                      f"{len(res['closed_forwards'])} forward(s)", "good"))
+                      f"{len(res['closed_forwards'])} forward(s){reset}", "good"))
             if res["pending_artifacts"]:
                 print(col(f"  [!] {len(res['pending_artifacts'])} artifact(s) still need "
                           f"manual reversal (listed; targets untouched)", "warn"))
