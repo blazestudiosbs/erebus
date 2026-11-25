@@ -330,8 +330,9 @@ class EreConsole(cmd.Cmd):
                 return
             reset = (f", reset scan path ({res['reset_dialer']} → direct)"
                      if res.get("reset_dialer") else "")
+            sx = ", closed socks proxy" if res.get("closed_socks") else ""
             print(col(f"[+] teardown: closed {len(res['closed_sessions'])} session(s), "
-                      f"{len(res['closed_forwards'])} forward(s){reset}", "good"))
+                      f"{len(res['closed_forwards'])} forward(s){reset}{sx}", "good"))
             if res["pending_artifacts"]:
                 print(col(f"  [!] {len(res['pending_artifacts'])} artifact(s) still need "
                           f"manual reversal (listed; targets untouched)", "warn"))
@@ -583,6 +584,41 @@ class EreConsole(cmd.Cmd):
             return
         print("usage: pivot [list | open <rhost> <rport> [-s sid|-r sid,sid][-l lport] "
               "| auto <target> <rport> | close <id> | via <sid>|off]")
+
+    def do_socks(self, arg: str) -> None:
+        """socks | socks on [lport] | socks off
+        Run a scope-gated SOCKS5 proxy. Point a browser / curl / proxychains at it
+        and every CONNECT is scope-checked then routed through the active scan path
+        (direct, or a pivot session set with `pivot via`).
+        """
+        parts = shlex.split(arg)
+        sx = self.fw.socks
+        if not parts or parts[0] in ("status", "list"):
+            if sx.running:
+                via = getattr(self.fw.dialer, "name", "direct")
+                print(col(f"  socks5 {sx.lhost}:{sx.lport}  via {via}  conns={sx.conns}",
+                          "good"))
+            else:
+                print(col("  socks proxy not running — 'socks on [port]'", "dim"))
+            return
+        if parts[0] in ("off", "stop"):
+            print("socks proxy stopped" if sx.stop() else col("  not running", "warn"))
+            return
+        if parts[0] in ("on", "start"):
+            if sx.running:
+                print(col(f"  already running on {sx.lhost}:{sx.lport}", "warn"))
+                return
+            lport = int(parts[1]) if len(parts) > 1 else 1080
+            try:
+                host, port = sx.start(lport=lport)
+            except OSError as exc:
+                print(col(f"  could not bind: {exc}", "error"))
+                return
+            via = getattr(self.fw.dialer, "name", "direct")
+            print(col(f"  socks5 on {host}:{port}  via {via}  "
+                      f"(scope-gated; e.g. curl --socks5-hostname {host}:{port} ...)", "good"))
+            return
+        print("usage: socks [status | on [lport] | off]")
 
     def do_vuln(self, arg: str) -> None:
         """vuln <product> [version]  — correlate against the intel DB (NVD/KEV/EPSS)."""

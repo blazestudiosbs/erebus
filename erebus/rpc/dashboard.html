@@ -1326,14 +1326,22 @@
       if(as==='target') osintForTarget(v); else if(as==='search') osintSearch(v); } });
 
   // ---- Pivots tab (active port-forwards) -------------------------------
-  function loadPivots(){ fetch('pivots',{cache:'no-store'}).then(function(r){return r.json();}).then(renderPivots)
+  function loadPivots(){ Promise.all([
+      fetch('pivots',{cache:'no-store'}).then(function(r){return r.json();}),
+      fetch('socks',{cache:'no-store'}).then(function(r){return r.json();}).catch(function(){return {};})
+    ]).then(function(a){ a[0].socks=a[1]; renderPivots(a[0]); })
     .catch(function(){ var b=document.getElementById('pivots-list'); if(b) b.innerHTML='<div class="empty">offline - connect to a live server</div>'; }); }
   function renderPivots(d){ var box=document.getElementById('pivots-list'); if(!box) return;
     var ps=(d.pivots||[]);
     var dialer=d.dialer||'direct', pivoted=(dialer!=='direct');
+    var sx=d.socks||{};
+    var socksLine=sx.running
+      ? '<span class="jbadge" style="color:#5dffa5;border-color:#5dffa5">socks5 '+escHtml(sx.lhost+':'+sx.lport)+'</span> <span class="jmut">scope-gated proxy &middot; conns '+(sx.conns||0)+'</span>'
+      : '<span class="jmut">socks proxy off</span>';
     var sp='<div style="margin-bottom:12px;font-size:12.5px">scan path: <span class="jbadge" style="color:'
       +(pivoted?'#ff9d2e':'#5dffa5')+';border-color:'+(pivoted?'#ff9d2e':'#5dffa5')+'">'+escHtml(dialer)+'</span>'
-      +(pivoted?' <span class="jmut">module scans route through this pivot</span>':' <span class="jmut">modules dial downstreams directly</span>')+'</div>';
+      +(pivoted?' <span class="jmut">module scans route through this pivot</span>':' <span class="jmut">modules dial downstreams directly</span>')
+      +'<br>'+socksLine+'</div>';
     if(!ps.length){ box.innerHTML=sp+'<div class="empty">no active pivots - open one via POST /pivots (scope-gated on the downstream)</div>'; return; }
     box.innerHTML=sp+'<table class="jtbl"><thead><tr><th>#</th><th>local</th><th></th><th>downstream</th><th>via</th><th>conns</th><th></th></tr></thead><tbody>'
       +ps.map(function(p){
