@@ -268,6 +268,43 @@ def test_teardown_without_op_is_empty() -> None:
     assert res["op"] is None and res["executed"] is False
 
 
+class _Sess:
+    def __init__(self, sid: int, host: str) -> None:
+        self.id, self.host, self.alive = sid, host, True
+
+    def command(self, line: str, overall: float = 6.0, settle: float = 0.4) -> str:
+        return ""
+
+
+def test_teardown_resets_session_dialer_to_direct() -> None:
+    from erebus.core.dial import SessionDialer
+    fw = Framework()
+    fw.op_new("e")
+    fw.dialer = SessionDialer(_Sess(1, "10.0.1.5"))       # scans routed through a pivot
+    assert fw.dialer.name == "session:1"
+    res = fw.op_teardown(confirm=True)
+    assert res["reset_dialer"] == "session:1"             # reported
+    assert fw.dialer.name == "direct"                     # and actually reset
+
+
+def test_teardown_leaves_direct_dialer_untouched() -> None:
+    fw = Framework()
+    fw.op_new("e")
+    res = fw.op_teardown(confirm=True)
+    assert res["reset_dialer"] == ""                      # nothing to reset
+    assert fw.dialer.name == "direct"
+
+
+def test_teardown_plan_reports_active_scan_path() -> None:
+    from erebus.core.dial import SessionDialer
+    fw = Framework()
+    fw.op_new("e")
+    fw.dialer = SessionDialer(_Sess(2, "10.0.2.6"))
+    plan = fw.op_teardown_plan()                          # preview only
+    assert plan["dialer"] == "session:2"
+    assert fw.dialer.name == "session:2"                  # preview changes nothing
+
+
 def test_console_op_artifact_and_teardown(capsys) -> None:
     con = _console()
     con.do_op("new e")

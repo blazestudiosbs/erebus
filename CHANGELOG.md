@@ -4,6 +4,14 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Fixed
+- **Op teardown resets the scan dialer**: tearing down an operation already closed its
+  sessions and port-forwards, but left `Framework.dialer` pointing at a `SessionDialer`
+  whose pivot session had just been closed — so a later scan would silently relay through a
+  torn-down pivot. `op_teardown` now resets the dialer to direct when it was routed through
+  a pivot and reports it (`reset_dialer`); the teardown plan surfaces the active scan path
+  (`dialer`), and the console prints the reset. Direct dialers are left untouched.
+
 ### Added
 - **Pivot-aware web recon**: the web scanners now follow the active pivot too. `_one`
   (and `probe`) in `scanner/http_probe` take an optional dialer and open their TCP socket
