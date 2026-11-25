@@ -11,6 +11,14 @@ this project uses [Semantic Versioning](https://semver.org).
   `scanner/http_headers` route every request through `self.dial()` and reach web services
   only a pivot host can see. Both label the path they took (`… via session:N`); with the
   default direct dialer their behaviour is unchanged. Scope still gates RHOSTS.
+- **Session auto-routing (`pivot auto`)**: Erebus can now pick the pivot to a target for
+  you. `core/autoroute.py`'s `plan_route(target, sessions)` finds the live session that can
+  relay to a target by subnet adjacency (a controlled host reaches any host on its own
+  `/prefix` network) via a breadth-first search, returning the shortest session chain (one
+  hop with single-homed hosts), `[]` when the target is already a session host, or `None`
+  when no session can reach it. The console gains `pivot auto <target> <rport>`, which plans
+  the chain, prints it, and opens the route — still scope-gated on the downstream and every
+  hop. Pure/advisory planner; it opens nothing by itself.
 - **Pivot-aware scanning**: modules now open their TCP connections through a framework
   **dialer**, so a scan can be routed over a controlled pivot and reach a downstream only
   the pivot host can see. `core/dial.py` adds `DirectDialer` (the default — dials from the
