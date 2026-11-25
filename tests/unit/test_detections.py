@@ -7,6 +7,7 @@ from erebus.console import EreConsole
 from erebus.core.framework import Framework
 from erebus.reporting.detections import (
     build_detections,
+    data_source_guidance,
     detections_for_techniques,
     render_markdown,
     render_sigma,
@@ -63,6 +64,30 @@ def test_render_markdown():
     md = render_markdown(build_detections(_fw().loader, _fw().store))
     assert md.startswith("# Erebus purple-team detections")
     assert "```yaml" in md
+    assert "## What to log" in md          # onboarding guidance section
+
+
+# --- what-to-log guidance ----------------------------------------------
+
+def test_data_source_guidance_all_and_filtered():
+    all_g = data_source_guidance()
+    assert len(all_g) >= 10
+    g0 = all_g[0]
+    for k in ("source", "category", "what", "enable"):
+        assert g0[k]
+    assert isinstance(g0["enable"], list) and g0["enable"]
+    # filtered to a subset (case-insensitive), unknown sources ignored
+    some = data_source_guidance(["network traffic", "Authentication Logs", "nope"])
+    names = {g["source"] for g in some}
+    assert names == {"Network Traffic", "Authentication Logs"}
+
+
+def test_build_detections_includes_guidance_for_used_sources():
+    data = build_detections(_fw().loader, _fw().store)
+    assert data["guidance"]
+    # every guidance source is actually used by some detection
+    used = {s for d in data["detections"] for s in d["data_sources"]}
+    assert all(g["source"] in used for g in data["guidance"])
 
 
 def test_detections_for_techniques_is_loader_free():
@@ -101,6 +126,13 @@ def test_console_detections_unknown(capsys):
     con = EreConsole(framework=_fw(), banner=False)
     con.do_detections("T9999")
     assert "no covered technique" in capsys.readouterr().out
+
+
+def test_console_detections_log(capsys):
+    con = EreConsole(framework=_fw(), banner=False)
+    con.do_detections("log")
+    out = capsys.readouterr().out
+    assert "What to log" in out and ("Sysmon" in out or "auditd" in out)
 
 
 def test_console_detections_export(tmp_path, capsys):

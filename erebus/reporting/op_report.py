@@ -19,7 +19,7 @@ from typing import Any
 
 from . import report as rpt
 from .attack import group_by_tactic
-from .detections import detections_for_techniques
+from .detections import data_source_guidance, detections_for_techniques
 
 _TECHNIQUE = re.compile(r"T\d{4}(?:\.\d{3})?")
 
@@ -175,6 +175,14 @@ def render_markdown(bundle: dict[str, Any]) -> str:
           "Sigma-style rule skeleton — tuning starting points, not turnkey rules._", ""]
     dets = detections_for_techniques(techniques)
     if dets:
+        guidance = data_source_guidance({s for d in dets for s in d["data_sources"]})
+        if guidance:
+            p += ["### What to log", "",
+                  "Turn these on so the rules below have data to fire against.", ""]
+            for g in guidance:
+                p.append(f"- **{rpt._md(g['source'])}** ({rpt._md(g['category'])}) — "
+                         f"{rpt._md(g['what'])} " + "; ".join(rpt._md(x) for x in g["enable"]))
+            p.append("")
         for d in dets:
             p.append(f"### {rpt._md(d['id'])} — {rpt._md(d['name'])}  ({rpt._md(d['tactic'])})")
             p.append(f"- **Watch:** {rpt._md(d['watch'])}")
@@ -302,6 +310,15 @@ def render_html(bundle: dict[str, Any], theme: str = "dark") -> str:
                "turnkey rules.</p>")
     dets = detections_for_techniques(techniques)
     if dets:
+        guidance = data_source_guidance({s for d in dets for s in d["data_sources"]})
+        if guidance:
+            out.append("<h3>What to log</h3>")
+            out.append('<p class="muted">Turn these on so the rules below have data to fire '
+                       "against.</p><ul>")
+            for g in guidance:
+                out.append(f"<li><b>{h(g['source'])}</b> ({h(g['category'])}) — "
+                           f"{h(g['what'])} " + "; ".join(h(x) for x in g["enable"]) + "</li>")
+            out.append("</ul>")
         for d in dets:
             out.append(f"<h3>{h(d['id'])} &mdash; {h(d['name'])} "
                        f'<span class="muted">({h(d["tactic"])})</span></h3>')
@@ -461,6 +478,11 @@ def render_pdf(bundle: dict[str, Any]) -> bytes:
          "Markdown/HTML export.", muted=True)
     dets = detections_for_techniques(techniques)
     if dets:
+        guidance = data_source_guidance({s for d in dets for s in d["data_sources"]})
+        if guidance:
+            para("What to log:", muted=True)
+            table(["Data source", "Turn it on"],
+                  [[g["source"], g["what"] + " " + "; ".join(g["enable"])] for g in guidance])
         table(["Technique", "Tactic", "Logsource", "Watch"],
               [[f"{d['id']} {d['name']}", d["tactic"], d["logsource"]["category"], d["watch"]]
                for d in dets])
