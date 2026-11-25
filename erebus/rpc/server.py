@@ -390,6 +390,13 @@ def create_app(framework: Any, token: str | None = None,
             raise HTTPException(status_code=500, detail=f"could not bind: {exc}") from None
         return {"ok": True, "pivot": fwd.as_dict()}
 
+    @app.post("/pivots/reconnect", dependencies=[Depends(require_token)])
+    async def reconnect_pivots() -> dict[str, Any]:
+        """Re-establish forwards (and the SOCKS proxy) saved from a previous run.
+        Direct forwards come straight back; session/route ones return as pending
+        until their shells are live again."""
+        return framework.pivot_reconnect()
+
     @app.delete("/pivots/{fid}", dependencies=[Depends(require_token)])
     async def close_pivot(fid: int) -> dict[str, Any]:
         return {"ok": framework.pivots.close(fid)}

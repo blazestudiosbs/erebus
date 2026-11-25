@@ -5,6 +5,14 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Pivot persistence & reconnect (`pivot reconnect`)**: pivots and the SOCKS proxy are
+  in-memory, so a process restart dropped them. Now `PivotManager` saves each open forward's
+  reconnect spec to the settings store (and `SocksProxy` its listen port), and
+  `Framework.pivot_reconnect()` re-establishes them: direct forwards and the SOCKS listener
+  come straight back, while a session/route forward returns as **pending** until its shell is
+  caught again (re-run once sessions are live). Driven by the console `pivot reconnect` and
+  the RPC `POST /pivots/reconnect`; `op teardown` still clears the saved specs so a torn-down
+  op leaves nothing to restore. Reconnecting is scope-gated like any open.
 - **Field Guide: "Lateral movement: pivoting & proxying"**: a new in-house methodology
   page (`pivoting-and-proxying`) that ties the whole pivot toolchain together — a pivot
   reaches but doesn't exploit, chaining hops for segmented networks (`pivot auto` /
