@@ -677,13 +677,26 @@ class EreConsole(cmd.Cmd):
                     print(col(f"        detect: {', '.join(ds)}", "dim"))
 
     def do_detections(self, arg: str) -> None:
-        """detections | detections <Txxxx> | detections export <path>
+        """detections | detections <Txxxx> | detections log | detections export <path>
         Purple-team companion: per technique, what to watch and a Sigma-style rule.
-        `<Txxxx>` prints one rule; `export <path>` writes the full set as Markdown.
+        `<Txxxx>` prints one rule; `log` prints the "what to log" onboarding for the
+        data sources in play; `export <path>` writes the full set as Markdown.
         """
         from .reporting.detections import build_detections, render_markdown
         data = build_detections(self.fw.loader, self.fw.store)
         parts = shlex.split(arg)
+        if parts and parts[0] in ("log", "logging", "sources"):
+            guidance = data.get("guidance") or []
+            if not guidance:
+                print(col("  no data sources in play yet", "dim"))
+                return
+            print(col("◆ What to log — turn these on so the detections have data", "accent"))
+            for g in guidance:
+                print(f"  {g['source']}  " + col(f"({g['category']})", "info"))
+                print(col(f"      {g['what']}", "dim"))
+                for step in g["enable"]:
+                    print(col(f"      · {step}", "dim"))
+            return
         if parts and parts[0] == "export" and len(parts) > 1:
             from pathlib import Path
             path = Path(parts[1]).expanduser()
@@ -708,7 +721,8 @@ class EreConsole(cmd.Cmd):
                   + col(f"[{d['tactic']}]", "info"))
             print(col(f"      watch: {d['watch']}  ·  logsource: {d['logsource']['category']}",
                       "dim"))
-        print(col("  detections <Txxxx> for a rule · detections export <path>", "dim"))
+        print(col("  detections <Txxxx> for a rule · detections log · "
+                  "detections export <path>", "dim"))
 
     def do_ask(self, arg: str) -> None:
         """ask <question>  — ask the LLM copilot about the current engagement."""

@@ -57,6 +57,98 @@ _SOURCE_LOGSOURCE: dict[str, dict[str, str]] = {
 
 _FALLBACK = {"category": "application", "watch": "relevant logs for this activity"}
 
+# "What to log" onboarding per ATT&CK data source: what the telemetry is and the
+# concrete way to turn it on, so a blue team can actually produce what the
+# detections need. Erebus's own wording; a practical starting checklist, not
+# exhaustive. Keyed by the data-source names used in TECHNIQUE_DATASOURCE.
+_ONBOARDING: dict[str, dict[str, Any]] = {
+    "Command Execution": {
+        "what": "commands run on a host, with their full command line.",
+        "enable": ["Windows: Security 4688 with 'Include command line' + Sysmon EID 1.",
+                   "Linux: auditd execve rules (or Sysmon-for-Linux process events).",
+                   "Ship to a central store; command lines are where tradecraft shows."]},
+    "Process Creation": {
+        "what": "new processes and their parent/child relationships.",
+        "enable": ["Windows: Sysmon EID 1 (+ Security 4688).",
+                   "Linux: auditd / Sysmon-for-Linux; macOS: EndpointSecurity exec events."]},
+    "Process Access": {
+        "what": "one process opening a handle to another (e.g. to read memory).",
+        "enable": ["Windows: Sysmon EID 10 (ProcessAccess), tuned for LSASS targets.",
+                   "Linux: eBPF/auditd ptrace monitoring."]},
+    "OS API Execution": {
+        "what": "sensitive OS API calls behind tooling.",
+        "enable": ["Windows: EDR API telemetry / ETW; correlate with process creation.",
+                   "Linux: eBPF syscall tracing where available."]},
+    "Script Execution": {
+        "what": "interpreter / script-block content (PowerShell, bash, wscript).",
+        "enable": ["Windows: PowerShell Script-Block Logging (4104) + Module Logging.",
+                   "Linux: shell history shipping and interpreter audit rules."]},
+    "Network Traffic": {
+        "what": "connections, volume and destinations.",
+        "enable": ["Firewall / NetFlow / Zeek at egress and between segments.",
+                   "Watch fan-out and non-standard ports from a single source (scanning)."]},
+    "Authentication Logs": {
+        "what": "logon successes and failures per account and source.",
+        "enable": ["Windows: Security 4624/4625/4768/4776; forward DC logs.",
+                   "Linux: auth.log / secure (sshd, sudo, PAM).",
+                   "Alert on failure bursts and spray patterns across accounts."]},
+    "Application Log": {
+        "what": "application-level auth and request anomalies.",
+        "enable": ["Ship web/app server access + error logs (status codes, UA, rate).",
+                   "Enable auth-event logging in the application itself."]},
+    "File Access": {
+        "what": "reads of credential stores and sensitive files.",
+        "enable": ["Windows: object-access auditing (SACL 4663) on key files/dirs.",
+                   "Linux: auditd watch rules on /etc/shadow, keys, .pgpass, histories."]},
+    "File Modification": {
+        "what": "writes to autostart, binary and config locations.",
+        "enable": ["Windows: Sysmon EID 11 (FileCreate) on startup/service paths.",
+                   "Linux: auditd watches on cron, systemd, rc, authorized_keys."]},
+    "Service Creation": {
+        "what": "new or changed services and their image paths.",
+        "enable": ["Windows: Security 7045 + Sysmon; Linux: auditd on systemd unit files."]},
+    "Service Metadata": {
+        "what": "service image-path / configuration changes (hijack surface).",
+        "enable": ["Windows: registry auditing on service keys; baseline image paths."]},
+    "Driver Load": {
+        "what": "kernel driver loads, especially unsigned ones.",
+        "enable": ["Windows: Sysmon EID 6 (DriverLoad); alert on unsigned/unusual drivers."]},
+    "Module Load": {
+        "what": "DLL/module loads, especially from odd paths.",
+        "enable": ["Windows: Sysmon EID 7 (ImageLoad); watch unsigned loads from temp dirs."]},
+    "Process Metadata": {
+        "what": "token / integrity-level changes on processes.",
+        "enable": ["Windows: Security 4703/4672 and EDR token telemetry."]},
+    "Internet Scan": {
+        "what": "externally observable scanning of your estate (not host-local).",
+        "enable": ["Perimeter IDS/flow logs + external attack-surface monitoring.",
+                   "Correlate with your own authorized-scan windows to cut noise."]},
+    "Malware Repository": {
+        "what": "third-party intel on infrastructure/tooling (not host-local).",
+        "enable": ["Subscribe to threat-intel feeds; match indicators against your assets."]},
+    "Cloud Service": {
+        "what": "cloud control-plane and audit activity.",
+        "enable": ["Enable CloudTrail / Azure Activity / GCP Audit logs and centralize.",
+                   "Alert on enumeration/list API bursts from one principal."]},
+}
+
+
+def data_source_guidance(sources: Any = None) -> list[dict[str, Any]]:
+    """"What to log" onboarding for data sources: what each telemetry is and how to
+    turn it on. ``sources`` limits the result (case-insensitive); None returns all."""
+    if sources is None:
+        names = sorted(_ONBOARDING)
+    else:
+        want = {str(s).strip().lower() for s in sources}
+        names = sorted(n for n in _ONBOARDING if n.lower() in want)
+    out: list[dict[str, Any]] = []
+    for name in names:
+        g = _ONBOARDING[name]
+        out.append({"source": name,
+                    "category": _SOURCE_LOGSOURCE.get(name, _FALLBACK)["category"],
+                    "what": g["what"], "enable": list(g["enable"])})
+    return out
+
 
 def _primary_logsource(data_sources: list[str]) -> dict[str, str]:
     for ds in data_sources:
@@ -143,12 +235,14 @@ def build_detections(loader: Any, store: Any) -> dict[str, Any]:
             detections.append(entry)
     # exercised first (the priority detections), then by id
     detections.sort(key=lambda d: (not d["exercised"], d["id"]))
+    used = {s for d in detections for s in d["data_sources"]}
     stats = {
         "techniques": len(detections),
         "exercised": sum(1 for d in detections if d["exercised"]),
-        "data_sources": len({s for d in detections for s in d["data_sources"]}),
+        "data_sources": len(used),
     }
-    return {"detections": detections, "stats": stats}
+    return {"detections": detections, "stats": stats,
+            "guidance": data_source_guidance(used)}
 
 
 def render_markdown(data: dict[str, Any]) -> str:
@@ -159,9 +253,20 @@ def render_markdown(data: dict[str, Any]) -> str:
            f"{s['data_sources']} data source(s).", "",
            "Starting points keyed to each technique's ATT&CK data source — tune to "
            "your environment before deploying.", ""]
+    guidance = data.get("guidance") or data_source_guidance(
+        {s for d in data["detections"] for s in d["data_sources"]})
+    if guidance:
+        out += ["## What to log", "",
+                "Turn these on so the detections below have data to fire against.", ""]
+        for g in guidance:
+            out.append(f"### {g['source']}  (`{g['category']}`)")
+            out.append(g["what"])
+            out += [f"- {step}" for step in g["enable"]]
+            out.append("")
+    out += ["## Rules", ""]
     for d in data["detections"]:
         mark = "exercised" if d["exercised"] else "covered"
-        out.append(f"## {d['id']} — {d['name']}  ({d['tactic']}, {mark})")
+        out.append(f"### {d['id']} — {d['name']}  ({d['tactic']}, {mark})")
         out.append(f"- **Watch:** {d['watch']}")
         out.append(f"- **Data sources:** {', '.join(d['data_sources']) or '—'}")
         out.append("```yaml")

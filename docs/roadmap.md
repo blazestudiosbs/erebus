@@ -70,7 +70,7 @@ Shipped since the phases above, same guardrails:
   scope-gated SOCKS5 proxy, live routes on the Homefield graph, teardown hygiene, and
   pivot/proxy persistence + reconnect. Each hop/downstream/CONNECT is scope-gated.
 
-## 🚧 Phase 5 — Purple-team detection export
+## ✅ Phase 5 — Purple-team detection export
 Close the purple-team loop: turn ATT&CK **coverage** into defensive **output**.
 
 - [x] `erebus/reporting/detections.py` — for every covered technique (exercised first),
@@ -82,7 +82,10 @@ Close the purple-team loop: turn ATT&CK **coverage** into defensive **output**.
 - [x] Detection export bundled into the per-operation report (a **Detections
   (purple-team)** section in Markdown/HTML/PDF, built loader-free from the op's exercised
   techniques).
-- [ ] Follow-up: per-data-source "what to log" onboarding guidance.
+- [x] Per-data-source **"what to log"** onboarding (`data_source_guidance`): concrete
+  per-platform steps to turn on the telemetry each detection needs — on the console
+  (`detections log`), in `GET /detections`, on the Detections tab, and folded into the
+  per-op report and the Markdown export.
 
 ---
 

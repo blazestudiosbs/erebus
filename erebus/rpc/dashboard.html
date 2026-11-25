@@ -1140,7 +1140,20 @@
     var box=document.getElementById('det-list'), dets=d.detections||[];
     if(!box) return;
     if(!dets.length){ box.innerHTML='<div class="empty">no techniques covered yet</div>'; return; }
-    box.innerHTML = dets.map(function(e){
+    var guide=d.guidance||[];
+    var guideHtml='';
+    if(guide.length){
+      guideHtml='<div class="card" style="margin-bottom:14px"><h4>what to log &mdash; turn these on first</h4>'
+        +guide.map(function(g){
+          return '<div style="margin:8px 0"><b>'+escHtml(g.source)+'</b> '
+            +'<span class="jbadge" style="color:#4db5ff;border-color:#4db5ff">'+escHtml(g.category)+'</span>'
+            +'<div class="jmut" style="margin:2px 0">'+escHtml(g.what)+'</div>'
+            +'<ul style="margin:2px 0 0 16px;padding:0">'
+            +(g.enable||[]).map(function(x){return '<li class="jmut">'+escHtml(x)+'</li>';}).join('')
+            +'</ul></div>';
+        }).join('')+'</div>';
+    }
+    box.innerHTML = guideHtml + dets.map(function(e){
       var clr=e.exercised?'#5dffa5':'#6f6690';
       var head='<span class="jbadge" style="color:'+clr+';border-color:'+clr+'">'+(e.exercised?'exercised':'covered')+'</span> '
         +'<b>'+escHtml(e.id)+'</b> '+escHtml(e.name)+' <span class="jmut">['+escHtml(e.tactic)+']</span>';

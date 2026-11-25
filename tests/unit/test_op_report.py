@@ -74,8 +74,10 @@ def test_detections_section_in_markdown_and_html() -> None:
     md = op_report.render_markdown(bundle)
     assert "## Detections (purple-team)" in md
     assert "T1046" in md and "```yaml" in md and "logsource:" in md
+    assert "### What to log" in md           # onboarding guidance folded in
     html = op_report.render_html(bundle)
     assert "Detections (purple-team)" in html and "title: Erebus starting point" in html
+    assert "What to log" in html
 
 
 def test_detections_section_empty_without_techniques() -> None:
