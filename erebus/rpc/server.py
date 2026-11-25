@@ -198,6 +198,15 @@ def create_app(framework: Any, token: str | None = None,
         from ..reporting.detections import build_detections
         return build_detections(framework.loader, framework.store)
 
+    @app.get("/remediation")
+    async def remediation(request: Request) -> dict[str, Any]:
+        """Risk-scored remediation plan: findings ranked by severity × exposure ×
+        reachability, each with a priority and fix guidance. ``?op=<id>`` scopes it."""
+        from ..reporting.remediation import build_remediation
+        op = request.query_params.get("op", "").strip()
+        op_id = int(op) if op.isdigit() else None
+        return build_remediation(framework.store, op_id=op_id)
+
     @app.get("/hosts")
     async def hosts() -> dict[str, Any]:
         return {"hosts": _rows(framework.store.hosts())}

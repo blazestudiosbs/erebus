@@ -724,6 +724,37 @@ class EreConsole(cmd.Cmd):
         print(col("  detections <Txxxx> for a rule · detections log · "
                   "detections export <path>", "dim"))
 
+    def do_remediation(self, arg: str) -> None:
+        """remediation | remediation export <path>
+        Risk-scored fix plan: findings ranked by severity × exposure × reachability,
+        each with a priority (P1-P4) and concrete remediation guidance.
+        """
+        from .reporting.remediation import build_remediation, render_markdown
+        data = build_remediation(self.fw.store)
+        parts = shlex.split(arg)
+        if parts and parts[0] == "export" and len(parts) > 1:
+            from pathlib import Path
+            path = Path(parts[1]).expanduser()
+            path.write_text(render_markdown(data), encoding="utf-8")
+            print(col(f"[+] wrote remediation plan ({data['stats']['findings']} finding(s)) "
+                      f"→ {path}", "good"))
+            return
+        s = data["stats"]
+        print(col(f"◆ Remediation — {s['findings']} finding(s): P1 {s['P1']} · P2 {s['P2']} "
+                  f"· P3 {s['P3']} · P4 {s['P4']}", "accent"))
+        pri_col = {"P1": "error", "P2": "warn", "P3": "info", "P4": "dim"}
+        for i in data["items"][:40]:
+            f = i["factors"]
+            print(f"  {col(i['priority'], pri_col.get(i['priority'], 'dim'))} "
+                  f"{i['score']:>6}  {str(i['severity']):8} {i['host']:16} {i['title']}")
+            print(col(f"        exposure={f['exposure']} reach={f['reachability']}"
+                      + (f" cvss={f['cvss']}" if f['cvss'] is not None else "")
+                      + (" KEV" if f['kev'] else "")
+                      + f"  ·  fix: {i['guidance']}", "dim"))
+        if len(data["items"]) > 40:
+            print(col(f"  … and {len(data['items']) - 40} more "
+                      f"(remediation export <path> for all)", "dim"))
+
     def do_ask(self, arg: str) -> None:
         """ask <question>  — ask the LLM copilot about the current engagement."""
         import os

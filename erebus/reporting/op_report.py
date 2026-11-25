@@ -20,6 +20,7 @@ from typing import Any
 from . import report as rpt
 from .attack import group_by_tactic
 from .detections import data_source_guidance, detections_for_techniques
+from .remediation import build_remediation_from_bundle
 
 _TECHNIQUE = re.compile(r"T\d{4}(?:\.\d{3})?")
 
@@ -136,6 +137,22 @@ def render_markdown(bundle: dict[str, Any]) -> str:
               rpt._epss(f.get("epss")), f.get("attack")] for f in findings]))
     else:
         p.append("No findings recorded for this operation.")
+
+    p += ["", "## Remediation plan", "",
+          "_Findings ranked by risk = severity × exposure × reachability; fix P1 first "
+          "(exposure reads 0 here — services aren't archived)._", ""]
+    rem = build_remediation_from_bundle(bundle)
+    if rem["items"]:
+        rs = rem["stats"]
+        p.append(f"Priority mix: P1 {rs['P1']} · P2 {rs['P2']} · P3 {rs['P3']} · "
+                 f"P4 {rs['P4']}.")
+        p.append("")
+        p.append(rpt._md_table(
+            ["Priority", "Score", "Severity", "Host", "Finding", "Remediation"],
+            [[i["priority"], i["score"], i["severity"], i["host"], i["title"], i["guidance"]]
+             for i in rem["items"]]))
+    else:
+        p.append("No findings to prioritize.")
 
     p += ["", "## Sessions", ""]
     if sessions:
@@ -266,6 +283,19 @@ def render_html(bundle: dict[str, Any], theme: str = "dark") -> str:
               h(rpt._epss(f.get("epss"))), h(f.get("attack"))] for f in findings]))
     else:
         out.append('<p class="muted">No findings recorded for this operation.</p>')
+
+    out.append("<h2>Remediation plan</h2>")
+    out.append('<p class="muted">Findings ranked by risk = severity &times; exposure &times; '
+               "reachability; fix P1 first (exposure reads 0 here &mdash; services aren&rsquo;t "
+               "archived).</p>")
+    rem = build_remediation_from_bundle(bundle)
+    if rem["items"]:
+        out.append(rpt._html_table(
+            ["Priority", "Score", "Severity", "Host", "Finding", "Remediation"],
+            [[h(i["priority"]), h(i["score"]), rpt._sev_badge(i["severity"]), h(i["host"]),
+              h(i["title"]), h(i["guidance"])] for i in rem["items"]]))
+    else:
+        out.append('<p class="muted">No findings to prioritize.</p>')
 
     out.append("<h2>Sessions</h2>")
     if sessions:
@@ -438,6 +468,17 @@ def render_pdf(bundle: dict[str, Any]) -> bytes:
                 rpt._epss(f.get("epss")), f.get("attack")] for f in findings])
     else:
         para("No findings recorded for this operation.", muted=True)
+
+    heading("Remediation plan")
+    para("Findings ranked by risk = severity x exposure x reachability; fix P1 first "
+         "(exposure reads 0 here - services aren't archived).", muted=True)
+    rem = build_remediation_from_bundle(bundle)
+    if rem["items"]:
+        table(["Priority", "Score", "Severity", "Host", "Finding", "Remediation"],
+              [[i["priority"], i["score"], i["severity"], i["host"], i["title"], i["guidance"]]
+               for i in rem["items"]])
+    else:
+        para("No findings to prioritize.", muted=True)
 
     heading("Sessions")
     if sessions:
