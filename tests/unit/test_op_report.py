@@ -69,6 +69,24 @@ def test_techniques_from_findings() -> None:
     assert "T1046" in md and "Discovery" in md
 
 
+def test_detections_section_in_markdown_and_html() -> None:
+    bundle = _seeded_bundle()                # has a T1046 finding
+    md = op_report.render_markdown(bundle)
+    assert "## Detections (purple-team)" in md
+    assert "T1046" in md and "```yaml" in md and "logsource:" in md
+    html = op_report.render_html(bundle)
+    assert "Detections (purple-team)" in html and "title: Erebus starting point" in html
+
+
+def test_detections_section_empty_without_techniques() -> None:
+    fw = Framework()
+    oid = fw.op_new("e", codename="C")
+    fw.store.add_finding("10.0.0.5", "mod", "no attack tag", severity="low")
+    bundle = archive.build_op_archive(fw.store, oid)
+    md = op_report.render_markdown(bundle)
+    assert "No techniques to derive detections from." in md
+
+
 # ---- console surface ------------------------------------------------------
 
 def _console() -> EreConsole:

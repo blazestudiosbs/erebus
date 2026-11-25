@@ -79,8 +79,10 @@ Close the purple-team loop: turn ATT&CK **coverage** into defensive **output**.
   turnkey rules. `render_markdown` exports the set as a defensive companion doc.
 - [x] Surfaces — console `detections [| <Txxxx> | export <path>]`, read `GET /detections`,
   and a **Detections** dashboard tab paired with ATT&CK coverage.
-- [ ] Follow-ups: per-data-source "what to log" onboarding guidance; detection export
-  bundled into the per-operation report.
+- [x] Detection export bundled into the per-operation report (a **Detections
+  (purple-team)** section in Markdown/HTML/PDF, built loader-free from the op's exercised
+  techniques).
+- [ ] Follow-up: per-data-source "what to log" onboarding guidance.
 
 ---
 

@@ -5,6 +5,7 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Detections in the per-operation report**: the per-op report now carries a **Detections (purple-team)** section — for every technique the operation exercised (from its findings' ATT&CK tags), the telemetry to watch and a Sigma-style rule, rendered in the Markdown and HTML exports (full rules) and the PDF (a compact watch/logsource table). Built loader-free via `detections_for_techniques()` so it works from an unsealed archive. Completes the Phase 5 follow-up.
 - **Purple-team detection export (Phase 5)**: closes the purple-team loop — turns ATT&CK
   *coverage* into defensive *output*. `reporting/detections.py` builds, for every covered
   technique (exercised first), the telemetry to watch and a portable **Sigma-style** rule

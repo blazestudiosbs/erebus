@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..attackmatrix import build_attack_matrix
+from .attack import datasources_of, name_of, tactic_of
 
 # Map an ATT&CK data source to a Sigma logsource and a plain "watch for" line.
 # Primary source wins; anything unmapped falls back to a generic log review.
@@ -97,6 +98,27 @@ def render_sigma(entry: dict[str, Any]) -> str:
         *[f"  - {t}" for t in _attack_tag(tactic, tid)],
     ]
     return "\n".join(lines) + "\n"
+
+
+def _entry_for(tid: str, exercised: bool) -> dict[str, Any]:
+    ds = datasources_of(tid)
+    ls = _primary_logsource(ds)
+    entry = {
+        "id": tid, "name": name_of(tid), "tactic": tactic_of(tid),
+        "exercised": exercised, "data_sources": ds,
+        "logsource": {"category": ls["category"]}, "watch": ls["watch"],
+    }
+    entry["sigma"] = render_sigma(entry)
+    return entry
+
+
+def detections_for_techniques(technique_ids: Any) -> list[dict[str, Any]]:
+    """Detection entries for a given set of technique ids, built WITHOUT the module
+    loader — from the bundled technique maps alone. Used by the per-operation report,
+    whose exercised techniques come from an archived logbook, not the live catalogue.
+    """
+    ids = sorted({str(t).strip().upper() for t in (technique_ids or []) if str(t).strip()})
+    return [_entry_for(tid, exercised=True) for tid in ids]
 
 
 def build_detections(loader: Any, store: Any) -> dict[str, Any]:
