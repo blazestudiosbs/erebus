@@ -5,6 +5,13 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Field Guide: "Lateral movement: pivoting & proxying"**: a new in-house methodology
+  page (`pivoting-and-proxying`) that ties the whole pivot toolchain together — a pivot
+  reaches but doesn't exploit, chaining hops for segmented networks (`pivot auto` /
+  multi-hop routes + the Homefield route-graph), routing the toolset through the foothold
+  (the scan dialer via `pivot via`, and the SOCKS5 proxy for external tools), and staying
+  in scope then tearing it down. Shown on the Guide tab and available to the copilot, in
+  Erebus's own wording.
 - **Scope-gated SOCKS5 proxy (`socks`)**: the pivot as a *proxy*. `core/socks.py`'s
   `SocksProxy` binds a local SOCKS5 listener; every CONNECT is scope-checked (an
   out-of-scope target is refused with SOCKS reply `0x02`) and then opened through the active
