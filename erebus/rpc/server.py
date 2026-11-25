@@ -191,6 +191,13 @@ def create_app(framework: Any, token: str | None = None,
         from ..attackmatrix import build_attack_matrix
         return build_attack_matrix(framework.loader, framework.store)
 
+    @app.get("/detections")
+    async def detections() -> dict[str, Any]:
+        """Purple-team detections: for each covered/exercised ATT&CK technique, the
+        telemetry to watch and a Sigma-style rule skeleton to tune and deploy."""
+        from ..reporting.detections import build_detections
+        return build_detections(framework.loader, framework.store)
+
     @app.get("/hosts")
     async def hosts() -> dict[str, Any]:
         return {"hosts": _rows(framework.store.hosts())}

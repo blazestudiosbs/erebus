@@ -676,6 +676,40 @@ class EreConsole(cmd.Cmd):
                 if ds:
                     print(col(f"        detect: {', '.join(ds)}", "dim"))
 
+    def do_detections(self, arg: str) -> None:
+        """detections | detections <Txxxx> | detections export <path>
+        Purple-team companion: per technique, what to watch and a Sigma-style rule.
+        `<Txxxx>` prints one rule; `export <path>` writes the full set as Markdown.
+        """
+        from .reporting.detections import build_detections, render_markdown
+        data = build_detections(self.fw.loader, self.fw.store)
+        parts = shlex.split(arg)
+        if parts and parts[0] == "export" and len(parts) > 1:
+            from pathlib import Path
+            path = Path(parts[1]).expanduser()
+            path.write_text(render_markdown(data), encoding="utf-8")
+            print(col(f"[+] wrote {data['stats']['techniques']} detection(s) → {path}",
+                      "good"))
+            return
+        if parts:
+            want = parts[0].upper()
+            hit = next((d for d in data["detections"] if d["id"] == want), None)
+            if hit is None:
+                print(col(f"  no covered technique {want}", "warn"))
+                return
+            print(hit["sigma"], end="")
+            return
+        s = data["stats"]
+        print(col(f"◆ Detections — {s['techniques']} technique(s); {s['exercised']} "
+                  f"exercised; {s['data_sources']} data source(s)", "accent"))
+        for d in data["detections"]:
+            mark = col("●", "good") if d["exercised"] else col("○", "dim")
+            print(f"  {mark} {d['id']:10} {d['name']}  "
+                  + col(f"[{d['tactic']}]", "info"))
+            print(col(f"      watch: {d['watch']}  ·  logsource: {d['logsource']['category']}",
+                      "dim"))
+        print(col("  detections <Txxxx> for a rule · detections export <path>", "dim"))
+
     def do_ask(self, arg: str) -> None:
         """ask <question>  — ask the LLM copilot about the current engagement."""
         import os

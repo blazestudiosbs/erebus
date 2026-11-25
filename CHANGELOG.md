@@ -5,6 +5,13 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Purple-team detection export (Phase 5)**: closes the purple-team loop — turns ATT&CK
+  *coverage* into defensive *output*. `reporting/detections.py` builds, for every covered
+  technique (exercised first), the telemetry to watch and a portable **Sigma-style** rule
+  skeleton from the bundled technique→tactic/name/data-source maps (honest framing: tuning
+  starting points, not turnkey rules), with `render_markdown` exporting the set as a
+  companion doc. Surfaced through the console `detections [| <Txxxx> | export <path>]`, a
+  read `GET /detections`, and a **Detections** dashboard tab paired with ATT&CK coverage.
 - **Pivot persistence & reconnect (`pivot reconnect`)**: pivots and the SOCKS proxy are
   in-memory, so a process restart dropped them. Now `PivotManager` saves each open forward's
   reconnect spec to the settings store (and `SocksProxy` its listen port), and
