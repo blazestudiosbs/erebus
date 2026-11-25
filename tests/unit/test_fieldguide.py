@@ -21,6 +21,16 @@ def test_lookup_by_slug():
     assert fieldguide.page("nope") == {}
 
 
+def test_pivoting_page_covers_the_toolchain():
+    p = fieldguide.page("pivoting-and-proxying")
+    assert p and "pivot" in p["title"].lower()
+    blob = " ".join(s["heading"] + " " + s["body"] + " " + s["erebus"]
+                    for s in p["sections"]).lower()
+    # the page ties the whole pivot toolchain together
+    for term in ("pivot auto", "pivot via", "socks", "route", "op teardown", "scope"):
+        assert term in blob, f"pivoting page should mention {term!r}"
+
+
 def test_source_is_cited():
     assert "Rehberger" in fieldguide.SOURCE["author"]
     assert fieldguide.SOURCE["title"]

@@ -208,6 +208,61 @@ PAGES: list = [
          "Model who can administer a host, not just who uses it.",
          "Include cloud and SaaS - that is where the crown jewels are."]),
     _page(
+        "pivoting-and-proxying", "Lateral movement: pivoting & proxying", "Ch. 6",
+        "A network rarely hands you a straight line to the objective. Once you control "
+        "one host, it becomes a stepping stone to the segments only it can reach - "
+        "pivoting is how you move your own tooling through that foothold, and a proxy "
+        "is how you point everything else at it.",
+        [
+            _s("A pivot reaches, it does not exploit",
+               "A pivot is a relay: a connection your tool makes to a local port is "
+               "carried through a host you control to a downstream it can route to. It "
+               "moves the operator's own bytes - it installs nothing and runs no code on "
+               "the target. The point is reachability, letting you see an internal host "
+               "that the engagement box cannot talk to directly.",
+               "`pivot open <rhost> <rport>` binds a local listener that forwards to the "
+               "downstream - directly, or `-s <session>` to relay through a controlled "
+               "host's socat/nc so the final hop comes from the pivot. The Pivots tab and "
+               "`pivot list` show what is open."),
+            _s("Chain the hops for segmented networks",
+               "Flat networks need one stepping stone; segmented ones need several, each "
+               "controlled host bridging to the next segment. A route relays through an "
+               "ordered chain of hops so a connection walks all the way to a downstream no "
+               "single hop could reach. Pick the chain yourself, or let the tooling work "
+               "it out from what you already control.",
+               "`pivot open <rhost> <rport> -r <sid,sid,..>` opens a multi-hop route; "
+               "`pivot auto <target> <rport>` finds the shortest chain of live sessions by "
+               "subnet adjacency and opens it. The Homefield tab draws each live route as "
+               "an operator -> hop -> target chain beside the credential-reuse paths."),
+            _s("Route your whole toolset through the foothold",
+               "Forwarding one port is rarely enough - you want your scanners, your "
+               "browser and your off-the-shelf tools all reaching the internal segment. "
+               "Two ways: point Erebus's own modules at the pivot, or expose the pivot as "
+               "a standard proxy so anything can use it.",
+               "`pivot via <session>` routes module scans (portscan, http_probe, "
+               "http_headers) through a pivot - they dial via the session and label the "
+               "path they took. `socks on` runs a scope-gated SOCKS5 proxy: point a "
+               "browser, curl (`--socks5-hostname`) or proxychains at it and every CONNECT "
+               "is scope-checked then relayed through the active pivot."),
+            _s("Stay in scope, then tear it down",
+               "A pivot must never become a way around the rules of engagement. Every "
+               "hop, every downstream and every proxied connection is checked against "
+               "scope, so a tunnel can only ever reach authorized hosts - even when any "
+               "tool can point at it. And a pivot is transient: when the operation ends, "
+               "close the listeners so nothing is left relaying.",
+               "`PivotManager` scope-checks the downstream and each hop before it binds; "
+               "the SOCKS proxy refuses an out-of-scope CONNECT with reply 0x02. `op "
+               "teardown` closes forwards and the proxy and resets the scan path to "
+               "direct, so no later scan relays through a torn-down session."),
+        ],
+        ["A pivot relays your traffic through a host you control - it reaches, it "
+         "doesn't exploit.",
+         "Chain hops for segmented networks; let `pivot auto` pick the shortest route.",
+         "Route the whole toolset through the foothold - the scan dialer for modules, "
+         "a SOCKS proxy for everything else.",
+         "Scope is enforced per hop and per connection; teardown leaves nothing "
+         "listening."]),
+    _page(
         "modes-and-ethics", "Operating modes & ethics", "Ch. 1-2",
         "How you operate - quiet and targeted vs broad and noisy - and the ethical "
         "weight of what you learn.",
