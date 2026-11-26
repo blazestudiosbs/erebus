@@ -108,14 +108,18 @@ def test_framework_dial_uses_configured_dialer():
 
 
 def test_portscan_dials_through_the_framework_dialer():
-    # a dialer that only "opens" 10.0.0.9:8080; portscan must find exactly that
+    # a pivot dialer that only "opens" 10.0.0.9:8080 (relay keeps the connection up
+    # and the downstream sends a banner); every other port is refused at the relay.
+    keep: list[socket.socket] = []
+
     class OnlyOnePort:
         name = "session:9"
 
         def dial(self, host, port, timeout=3.0):
             if host == "10.0.0.9" and port == 8080:
                 a, b = socket.socketpair()
-                a.close()                            # closed peer: connect ok, no banner
+                a.sendall(b"open")                   # downstream is up (banner) = open
+                keep.append(a)                       # keep the peer alive, don't EOF
                 return b
             raise OSError("closed")
 
@@ -128,6 +132,8 @@ def test_portscan_dials_through_the_framework_dialer():
     fw.run(m, background=False)
     opened = {(s["host"], s["port"]) for s in fw.store.services()}
     assert opened == {("10.0.0.9", 8080)}            # only the pivot-reachable port
+    for s in keep:
+        s.close()
 
 
 def test_console_pivot_via_sets_and_clears_dialer(capsys):
