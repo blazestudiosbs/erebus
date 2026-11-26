@@ -72,15 +72,15 @@ class SessionDialer:
 
     def dial(self, host: str, port: int, timeout: float = 3.0) -> socket.socket:
         with self._lock:
-            relay_port = self._relays.get((host, port))
-            start = relay_port is None
-            if start:
+            existing = self._relays.get((host, port))
+            if existing is None:
                 relay_port = next(self._ports)
                 self._relays[(host, port)] = relay_port
-        if start:
+            else:
+                relay_port = existing
+        if existing is None:
             # first dial to this downstream: start the forked relay and connect
-            connect = session_socat_relay(self.session, host, port, relay_port,  # type: ignore[arg-type]
-                                          timeout=timeout)
+            connect = session_socat_relay(self.session, host, port, relay_port, timeout=timeout)
             return connect()
         # a relay for this downstream already runs (fork); just dial its port again
         return socket.create_connection((self.session.host, relay_port), timeout=timeout)
