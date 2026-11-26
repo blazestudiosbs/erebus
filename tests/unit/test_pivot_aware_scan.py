@@ -10,6 +10,8 @@ from __future__ import annotations
 import socket
 import threading
 
+import pytest
+
 from erebus.core.dial import DirectDialer, SessionDialer
 from erebus.core.framework import Framework
 
@@ -75,11 +77,48 @@ def test_session_dialer_relays_through_pivot():
         srv.close()
 
 
-def test_session_dialer_uses_fresh_port_per_connection():
+def test_session_dialer_uses_fresh_port_per_downstream():
     sess = FakeSession(2, "127.0.0.1")
     d = SessionDialer(sess, base_relay_port=50000)
     ports = [d._ports.__next__() for _ in range(3)]  # noqa: SLF001 - checking allocation
     assert ports == [50000, 50001, 50002]
+
+
+def test_session_dialer_reuses_one_relay_per_downstream():
+    # a forked socat relay serves many connections, so a second dial to the same
+    # downstream must reuse it rather than start (and leak) another.
+    srv, relay_port = _accept_server()
+    sess = FakeSession(1, "127.0.0.1")
+    try:
+        d = SessionDialer(sess, base_relay_port=relay_port)
+        d.dial("10.0.0.9", 445, timeout=3).recv(8)      # first: starts a relay
+        d.dial("10.0.0.9", 445, timeout=3).recv(8)      # same downstream: reused
+        assert len([c for c in sess.commands if "TCP-LISTEN" in c]) == 1
+        with pytest.raises(OSError):
+            d.dial("10.0.0.9", 22, timeout=1)           # new downstream: starts another
+        assert len([c for c in sess.commands if "TCP-LISTEN" in c]) == 2
+    finally:
+        srv.close()
+
+
+def test_session_dialer_close_kills_its_relays_on_the_pivot():
+    srv, relay_port = _accept_server()
+    sess = FakeSession(1, "127.0.0.1")
+    try:
+        d = SessionDialer(sess, base_relay_port=relay_port)
+        d.dial("10.0.0.9", 445, timeout=3).recv(8)
+        d.close()
+        kills = [c for c in sess.commands if "pkill" in c]
+        assert kills and str(relay_port) in kills[-1]   # killed the exact relay port
+        before = len(sess.commands)
+        d.close()                                       # relays cleared: no-op now
+        assert len(sess.commands) == before
+    finally:
+        srv.close()
+
+
+def test_direct_dialer_close_is_a_noop():
+    DirectDialer().close()                              # must exist and do nothing
 
 
 # --- framework wiring ---------------------------------------------------
@@ -146,3 +185,32 @@ def test_console_pivot_via_sets_and_clears_dialer(capsys):
     assert fw.dialer.name == "session:1"
     con.do_pivot("via off")
     assert fw.dialer.name == "direct"
+
+
+def test_console_pivot_via_off_tears_down_relays(capsys):
+    from erebus.console import EreConsole
+    fw = Framework()
+    sess = FakeSession(1, "10.0.0.2")
+    fw.sessions._live[1] = sess
+    con = EreConsole(framework=fw, banner=False)
+    con.do_pivot("via 1")
+    fw.dialer._relays[("10.0.0.9", 445)] = 43000   # pretend a relay is up
+    capsys.readouterr()
+    con.do_pivot("via off")
+    assert any("pkill" in c for c in sess.commands)  # relays killed on the pivot
+    assert fw.dialer.name == "direct"
+
+
+def test_console_pivot_switch_tears_down_previous_relays(capsys):
+    from erebus.console import EreConsole
+    fw = Framework()
+    fw.sessions._live[1] = FakeSession(1, "10.0.0.2")
+    fw.sessions._live[2] = FakeSession(2, "10.0.0.3")
+    con = EreConsole(framework=fw, banner=False)
+    con.do_pivot("via 1")
+    first = fw.dialer
+    first._relays[("10.0.0.9", 445)] = 43000
+    capsys.readouterr()
+    con.do_pivot("via 2")                            # switching pivots closes the old one
+    assert any("pkill" in c for c in fw.sessions.get(1).commands)
+    assert fw.dialer.name == "session:2"

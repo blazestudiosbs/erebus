@@ -196,9 +196,17 @@ class Framework:
                 closed_forwards.append(int(f["id"]))
 
         # reset the scan dialer: it may route through a session just closed, so
-        # leaving it set would make later scans relay through a torn-down pivot
+        # leaving it set would make later scans relay through a torn-down pivot.
+        # close() first, so the relays it started on the pivot are killed rather
+        # than left to linger and misroute a later run.
         reset_dialer = self.dialer.name if self.dialer.name != "direct" else ""
         if reset_dialer:
+            closer = getattr(self.dialer, "close", None)
+            if callable(closer):
+                try:
+                    closer()
+                except Exception:  # noqa: BLE001 - cleanup is best-effort
+                    pass
             self.dialer = DirectDialer()
         closed_socks = self.socks.stop()        # close the SOCKS listener too
 
