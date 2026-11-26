@@ -164,8 +164,8 @@ class Post(Module):
         sess = self.framework.sessions.get(sid)
         if sess is None or not sess.alive:
             self.error(
-                f"no live session {sid} - open one with a handler "
-                "(e.g. handler/reverse_tcp) and set SESSION to its id")
+                f"no live session {sid} - open one first (scanner/ssh_login with a "
+                "known credential, or handler/reverse_tcp) and set SESSION to its id")
             return None
         return sess
 

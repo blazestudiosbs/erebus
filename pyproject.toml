@@ -19,7 +19,7 @@ rpc = ["fastapi", "uvicorn[standard]"]
 intel = ["requests"]
 connectors = ["keyring>=24"]
 report = ["fpdf2>=2.7"]
-creds = ["paramiko>=3"]  # optional ssh backend for auxiliary/creds/*
+creds = ["paramiko>=3"]  # optional ssh backend for auxiliary/creds/* and scanner/ssh_login
 # everything needed to RUN Erebus (not the dev/test tooling)
 all = ["fastapi", "uvicorn[standard]", "keyring>=24", "fpdf2>=2.7", "requests"]
 
