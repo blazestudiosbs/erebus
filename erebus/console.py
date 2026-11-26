@@ -79,6 +79,16 @@ class EreConsole(cmd.Cmd):
                   "reporting (op report <file>); use 'op new <name>' for a named one",
                   "dim"))
 
+    def _close_dialer(self) -> None:
+        """Release the current scan dialer's relays (best-effort) before swapping it,
+        so a pivot's socat/nc listeners don't linger on the pivot host."""
+        closer = getattr(self.fw.dialer, "close", None)
+        if callable(closer):
+            try:
+                closer()
+            except Exception:  # noqa: BLE001 - cleanup is best-effort
+                pass
+
     # --- presentation ---
     def _banner(self) -> None:
         counts: dict[str, int] = {}
@@ -519,6 +529,7 @@ class EreConsole(cmd.Cmd):
             return
         if parts[0] == "via" and len(parts) > 1:
             if parts[1] in ("off", "direct", "none"):
+                self._close_dialer()        # kill any relays before going direct
                 self.fw.dialer = DirectDialer()
                 print(col("  scans now dial downstreams directly", "good"))
                 return
@@ -526,6 +537,7 @@ class EreConsole(cmd.Cmd):
             if sess is None or not sess.alive:
                 print(col(f"  no live session {parts[1]}", "error"))
                 return
+            self._close_dialer()            # tear down the previous pivot's relays first
             self.fw.dialer = SessionDialer(sess)
             print(col(f"  scans now route through session {sess.id} ({sess.host})", "good"))
             return

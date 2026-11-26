@@ -118,6 +118,31 @@ def test_module_run_tags_job_to_current_op() -> None:
     assert all(j["op_id"] == op_id for j in fw.store.jobs())
 
 
+def test_op_teardown_kills_pivot_relays_and_resets_dialer() -> None:
+    from erebus.core.dial import SessionDialer
+
+    class FakeSess:
+        id, host, alive = 1, "10.0.0.2", True
+
+        def __init__(self) -> None:
+            self.commands: list[str] = []
+
+        def command(self, line: str, overall: float = 6.0, settle: float = 0.4) -> str:
+            self.commands.append(line)
+            return ""
+
+    fw = Framework()
+    fw.op_new("teardown-test")
+    s = FakeSess()
+    fw.sessions._live[1] = s      # type: ignore[assignment]
+    d = SessionDialer(s)          # type: ignore[arg-type]
+    d._relays[("10.0.0.9", 445)] = 43000      # a relay is up on the pivot
+    fw.dialer = d
+    fw.op_teardown(confirm=True)
+    assert any("pkill" in c for c in s.commands)   # teardown killed the relay
+    assert fw.dialer.name == "direct"              # and reset the scan path
+
+
 # ---- console: the `op` verb ----------------------------------------------
 
 def _console():
