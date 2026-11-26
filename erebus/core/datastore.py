@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS evidence(
   name TEXT, size INTEGER, note TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS jobs(
   id INTEGER PRIMARY KEY, module TEXT, key TEXT, target TEXT, options TEXT,
-  status TEXT, error TEXT, started REAL, ended REAL);
+  status TEXT, error TEXT, started REAL, ended REAL, attack TEXT);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE TABLE IF NOT EXISTS credentials(
   id INTEGER PRIMARY KEY, host TEXT, port INTEGER, service TEXT,
@@ -80,6 +80,11 @@ class Store:
         have = {r[1] for r in self.db.execute("PRAGMA table_info(findings)")}
         if "cvss" not in have:
             self.db.execute("ALTER TABLE findings ADD COLUMN cvss REAL")
+        # jobs gained `attack` (the ATT&CK ids of the module run) so a report can
+        # show technique coverage from what was actually executed, not only findings
+        jcols = {r[1] for r in self.db.execute("PRAGMA table_info(jobs)")}
+        if "attack" not in jcols:
+            self.db.execute("ALTER TABLE jobs ADD COLUMN attack TEXT")
         # Tag existing record tables with op_id (nullable) for engagement scoping.
         for table in _OP_TAGGED:
             cols = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
@@ -188,14 +193,18 @@ class Store:
 
     # -- jobs ---------------------------------------------------------------
     def add_job(self, module: str, key: str = "", target: str = "",
-                options: Any = None) -> int:
-        """Record a newly-queued job and return its persistent id."""
+                options: Any = None, attack: str = "") -> int:
+        """Record a newly-queued job and return its persistent id.
+
+        ``attack`` is the comma-separated ATT&CK ids of the module being run, stored
+        so a report can show technique coverage from what was executed.
+        """
         with self._lock:
             cur = self.db.execute(
-                "INSERT INTO jobs(module,key,target,options,status,started,op_id) "
-                "VALUES(?,?,?,?,?,?,?)",
+                "INSERT INTO jobs(module,key,target,options,status,started,op_id,attack) "
+                "VALUES(?,?,?,?,?,?,?,?)",
                 (module, key, target, json.dumps(options or {}, default=str),
-                 "queued", time.time(), self.current_op_id),
+                 "queued", time.time(), self.current_op_id, attack),
             )
             self.db.commit()
             return int(cur.lastrowid or 0)

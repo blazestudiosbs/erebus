@@ -64,9 +64,18 @@ def _findings(bundle: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _techniques(bundle: dict[str, Any]) -> dict[str, int]:
+    """ATT&CK techniques exercised in the operation, counted across both the
+    findings that cite a technique and the modules that were run (each module
+    records its ATT&CK ids on the job row). Deriving coverage from what ran — not
+    only from finding tags — is what makes the report reflect the actual activity
+    (a portscan, a spray and an ssh_login all exercise techniques without
+    necessarily producing a technique-tagged finding)."""
     counts: dict[str, int] = {}
     for f in bundle.get("findings", []):
         for t in _TECHNIQUE.findall(str(f.get("attack") or "")):
+            counts[t] = counts.get(t, 0) + 1
+    for j in bundle.get("jobs", []):
+        for t in _TECHNIQUE.findall(str(j.get("attack") or "")):
             counts[t] = counts.get(t, 0) + 1
     return dict(sorted(counts.items()))
 
