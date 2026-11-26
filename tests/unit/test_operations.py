@@ -125,6 +125,50 @@ def _console():
     return EreConsole(framework=Framework(), banner=False)
 
 
+# ---- console: auto-open a default operation so every run is reportable ----
+
+def test_preloop_opens_default_operation(capsys) -> None:
+    con = _console()
+    assert con.fw.current_op() is None            # not opened just by constructing
+    con.preloop()                                 # what cmdloop() calls at startup
+    capsys.readouterr()
+    op = con.fw.current_op()
+    assert op is not None and op["name"] == "default"
+
+
+def test_ensure_operation_is_idempotent() -> None:
+    con = _console()
+    con._ensure_operation()
+    first = con.fw.current_op()["id"]
+    con._ensure_operation()                       # second call must not open another
+    assert con.fw.current_op()["id"] == first
+    assert len(con.fw.store.operations()) == 1
+
+
+def test_ensure_operation_keeps_a_named_op() -> None:
+    con = _console()
+    con.do_op("new redteam NIGHTJAR")
+    con._ensure_operation()                       # must not replace the user's op
+    assert con.fw.current_op()["codename"] == "NIGHTJAR"
+    assert len(con.fw.store.operations()) == 1
+
+
+def test_records_after_auto_op_are_tagged_and_reportable() -> None:
+    from erebus.reporting.archive import build_op_archive
+
+    con = _console()
+    con.preloop()                                 # default op opens
+    op_id = int(con.fw.current_op()["id"])
+    # records created during the run now carry the op id (previously op_id was None)
+    sid = con.fw.store.add_session("10.10.20.5", kind="shell", transport="ssh")
+    con.fw.store.add_credential("10.10.20.5", "devops", secret="x", service="ssh",
+                                port=22, source="scanner/ssh_login")
+    assert dict(con.fw.store.sessions()[0])["op_id"] == op_id
+    bundle = build_op_archive(con.fw.store, op_id)
+    assert any(int(s["id"]) == sid for s in bundle["sessions"])   # session in the report
+    assert len(bundle["credentials"]) == 1                        # cred in the report
+
+
 def test_console_op_new_status_end(capsys) -> None:
     con = _console()
     con.do_op("new redteam NIGHTJAR")

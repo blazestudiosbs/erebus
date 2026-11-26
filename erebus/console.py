@@ -61,6 +61,24 @@ class EreConsole(cmd.Cmd):
         if banner:
             self._banner()
 
+    def preloop(self) -> None:
+        """Runs once when the interactive loop starts: make sure an operation is
+        open so the whole run is captured and reportable. Without this a user can
+        scan, open sessions and crack creds, then find `op report` has nothing to
+        report because no op was ever opened (records tag to the current op, which
+        was None). Mirrors a default workspace; `op new <name>` starts a named one.
+        """
+        self._ensure_operation()
+
+    def _ensure_operation(self) -> None:
+        """Open a default operation if none is current (idempotent)."""
+        if self.fw.current_op() is not None:
+            return
+        op_id = self.fw.op_new("default")
+        print(col(f"[*] operation #{op_id} 'default' opened — this run is tracked for "
+                  "reporting (op report <file>); use 'op new <name>' for a named one",
+                  "dim"))
+
     # --- presentation ---
     def _banner(self) -> None:
         counts: dict[str, int] = {}
