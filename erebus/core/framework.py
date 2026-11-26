@@ -303,7 +303,8 @@ class Framework:
         key = f"{module.type.value}/{module.name}"
         redacted = redact_options(module.datastore.as_dict())
         jid = self.store.add_job(module.name, key=key,
-                                 target=", ".join(targets), options=redacted)
+                                 target=", ".join(targets), options=redacted,
+                                 attack=",".join(module.attack))
 
         def _run() -> None:
             self.store.set_job_status(jid, "running")

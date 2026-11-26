@@ -33,6 +33,28 @@ def test_markdown_has_sections_and_op_header() -> None:
     assert "svc_erebus" in md and "weak SMB auth" in md
 
 
+def test_attack_coverage_and_detections_come_from_modules_run() -> None:
+    # a module run records its ATT&CK ids on the job row, so coverage + detections
+    # populate even when no finding is technique-tagged (the empty-report regression).
+    fw = Framework()
+    fw.scope.allow("127.0.0.0/8")
+    oid = fw.op_new("run-coverage")
+    m = fw.use("auxiliary/scanner/portscan")       # attack=["T1046"]
+    m.set_option("RHOSTS", "127.0.0.1")
+    m.set_option("PORTS", "1")                      # closed; the module still runs
+    fw.run(m, background=False)
+
+    bundle = archive.build_op_archive(fw.store, oid)
+    assert not bundle["findings"]                   # portscan tags no finding here
+    assert any("T1046" in str(j.get("attack") or "") for j in bundle["jobs"])
+    assert "T1046" in op_report._techniques(bundle)  # derived from the job, not a finding
+
+    md = op_report.render_markdown(bundle)
+    assert "T1046" in md
+    assert "No ATT&CK techniques recorded" not in md
+    assert "No techniques to derive detections from" not in md
+
+
 def test_report_never_contains_secret_values() -> None:
     bundle = _seeded_bundle()
     assert op_report.render_markdown(bundle).find("Hunter2!") == -1
