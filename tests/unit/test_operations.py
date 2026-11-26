@@ -118,6 +118,54 @@ def test_module_run_tags_job_to_current_op() -> None:
     assert all(j["op_id"] == op_id for j in fw.store.jobs())
 
 
+def test_credential_refound_in_op_is_tagged_to_it() -> None:
+    st = Store(":memory:")
+    st.add_credential("10.0.0.5", "admin", secret="pw", service="ssh", port=22)
+    assert dict(st.credentials()[0])["op_id"] is None        # found outside any op
+    op = st.create_operation("run")
+    st.add_credential("10.0.0.5", "admin", secret="pw", service="ssh", port=22)
+    rows = st.credentials()
+    assert len(rows) == 1 and dict(rows[0])["op_id"] == op    # re-find tags it, no dup
+
+
+def test_credential_existing_op_tag_is_not_stolen() -> None:
+    st = Store(":memory:")
+    op1 = st.create_operation("op1")
+    st.add_credential("10.0.0.5", "admin", secret="pw", service="ssh", port=22)
+    st.create_operation("op2")                               # switches current op
+    st.add_credential("10.0.0.5", "admin", secret="pw", service="ssh", port=22)
+    assert dict(st.credentials()[0])["op_id"] == op1         # COALESCE keeps op1
+
+
+def test_console_hosts_hides_down_by_default(capsys) -> None:
+    con = _console()
+    con.fw.store.add_target("10.0.0.1", "up")
+    con.fw.store.add_target("10.0.0.2", "down")
+    con.do_hosts("")
+    out = capsys.readouterr().out
+    assert "10.0.0.1" in out and "10.0.0.2" not in out and "hidden" in out
+    con.do_hosts("-a")
+    out = capsys.readouterr().out
+    assert "10.0.0.1" in out and "10.0.0.2" in out           # -a shows 'down' too
+
+
+def test_console_op_new_takes_one_word_codename(capsys) -> None:
+    con = _console()
+    con.do_op("new redteam NIGHTJAR and some pasted junk")
+    out = capsys.readouterr().out
+    assert con.fw.current_op()["codename"] == "NIGHTJAR"     # not the whole trailing line
+    assert "ignoring extra text" in out
+
+
+def test_main_forwards_scope_and_lab_to_launch(monkeypatch) -> None:
+    import erebus.console as console
+    captured: dict = {}
+    monkeypatch.setattr(console, "launch", lambda **kw: captured.update(kw))
+    console.main(["--scope", "/tmp/s.txt", "--lab"])
+    assert captured.get("scope_file") == "/tmp/s.txt"        # previously dropped
+    assert captured.get("lab") is True
+
+
 def test_op_teardown_kills_pivot_relays_and_resets_dialer() -> None:
     from erebus.core.dial import SessionDialer
 
