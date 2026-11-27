@@ -1,7 +1,8 @@
 """Turn a HackerOne program's scope into Erebus scope rules (pure; no I/O).
 
-Accepts either a **structured scope** export (HackerOne's API/JSON: a list of
-``{asset_type, asset_identifier, eligible_for_submission, ...}``) or a **plain list**
+Accepts a **structured scope** export (HackerOne's API/JSON: a list of
+``{asset_type, asset_identifier, eligible_for_submission, ...}``), the **CSV** that
+HackerOne's "Export scopes" button produces (same columns), or a **plain list**
 pasted from a policy page (one asset per line). It produces the in-scope,
 network-testable rules and — the part that keeps you inside the program — turns an
 out-of-scope network asset (``eligible_for_submission: false``) into a **deny** rule
@@ -16,6 +17,8 @@ already matches a base domain and its subdomains).
 """
 from __future__ import annotations
 
+import csv
+import io
 import ipaddress
 import json
 from dataclasses import dataclass, field
@@ -87,6 +90,49 @@ def _structured(entries: list) -> ParsedScope:
     return out
 
 
+def _as_bool(value: str) -> bool:
+    """CSV cells are strings; map ``"false"``/0/no to False, everything else to True
+    (matching ``_structured``'s default of in-scope when eligibility is unstated)."""
+    return str(value or "").strip().lower() not in ("false", "0", "no", "n", "off")
+
+
+def _looks_like_h1_csv(text: str) -> bool:
+    """True when the first non-empty line is a HackerOne scope-export CSV header."""
+    first = next((ln for ln in text.splitlines() if ln.strip()), "").lower()
+    return "," in first and "asset_type" in first and (
+        "identifier" in first or "asset_identifier" in first)
+
+
+def _csv(text: str) -> ParsedScope:
+    """Parse HackerOne's scope-export CSV. Uses the csv module so quoted fields with
+    embedded commas/newlines (the ``instruction`` column) don't corrupt the rows, then
+    feeds the same eligibility logic as the JSON path."""
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        return ParsedScope()
+    header = [h.strip().lower().lstrip("﻿") for h in rows[0]]
+    idx = {name: i for i, name in enumerate(header)}
+
+    def col(row: list[str], *names: str) -> str:
+        for n in names:
+            i = idx.get(n)
+            if i is not None and i < len(row):
+                return row[i]
+        return ""
+
+    entries: list[dict[str, object]] = []
+    for row in rows[1:]:
+        ident = col(row, "identifier", "asset_identifier").strip()
+        if not ident:
+            continue
+        entries.append({
+            "identifier": ident,
+            "asset_type": col(row, "asset_type", "type").strip(),
+            "eligible_for_submission": _as_bool(col(row, "eligible_for_submission")),
+        })
+    return _structured(entries)
+
+
 def _plain(text: str) -> ParsedScope:
     out = ParsedScope()
     seen: set[str] = set()
@@ -114,10 +160,12 @@ def _plain(text: str) -> ParsedScope:
 
 
 def parse(text: str) -> ParsedScope:
-    """Parse a structured-scope JSON export or a plain one-per-line list.
+    """Parse a structured-scope JSON export, a HackerOne scope-export CSV, or a plain
+    one-per-line list.
 
     JSON may be a bare list, or an object with the list under ``data`` /
-    ``structured_scopes`` / ``scopes`` (the common HackerOne shapes).
+    ``structured_scopes`` / ``scopes`` (the common HackerOne shapes). A CSV is
+    recognised by its ``identifier,asset_type,…`` header row.
     """
     stripped = text.strip()
     data: object = None
@@ -133,4 +181,6 @@ def parse(text: str) -> ParsedScope:
                 break
     if isinstance(data, list) and any(isinstance(e, dict) for e in data):
         return _structured(data)
+    if _looks_like_h1_csv(text):
+        return _csv(text)
     return _plain(text)
