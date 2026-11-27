@@ -438,6 +438,10 @@ class EreConsole(cmd.Cmd):
             self.fw.scope.allow(parts[1])
             self.fw.sync_op_scope()            # keep the open op's recorded scope current
             print(f"allowed {parts[1]}")
+        elif parts[0] == "deny" and len(parts) > 1:
+            self.fw.scope.deny(parts[1])
+            self.fw.sync_op_scope()
+            print(f"excluded {parts[1]}")
         elif parts[0] == "load" and len(parts) > 1:
             self.fw.scope.load(parts[1])
             self.fw.sync_op_scope()
@@ -445,7 +449,8 @@ class EreConsole(cmd.Cmd):
         elif parts[0] == "import" and len(parts) > 1:
             self._scope_import(parts[1])
         else:
-            print("usage: scope [show | allow <cidr> | load <file> | import <h1-scope-file>]")
+            print("usage: scope [show | allow <cidr> | deny <cidr> | load <file> "
+                  "| import <h1-scope-file>]")
 
     def _scope_import(self, path: str) -> None:
         """Import a HackerOne scope file: add in-scope network targets, report skips."""
@@ -460,10 +465,15 @@ class EreConsole(cmd.Cmd):
         parsed = h1scope.parse(text)
         for rule in parsed.rules:
             self.fw.scope.allow(rule)
+        for rule in parsed.deny:
+            self.fw.scope.deny(rule)
         self.fw.sync_op_scope()
-        print(col(f"  imported {len(parsed.rules)} in-scope rule(s)", "good"))
+        print(col(f"  imported {len(parsed.rules)} in-scope rule(s), "
+                  f"{len(parsed.deny)} exclusion(s)", "good"))
         for rule in parsed.rules:
             print(col(f"    + {rule}", "dim"))
+        for rule in parsed.deny:
+            print(col(f"    ! excluded {rule} (out of scope — enforced)", "accent"))
         for ident, reason in parsed.skipped:
             print(col(f"    - skipped {ident} — {reason}", "warn"))
         print(col("  review `scope show` against the program policy — and its "

@@ -3,10 +3,12 @@
 Accepts either a **structured scope** export (HackerOne's API/JSON: a list of
 ``{asset_type, asset_identifier, eligible_for_submission, ...}``) or a **plain list**
 pasted from a policy page (one asset per line). It produces the in-scope,
-network-testable rules and — the part that keeps you inside the program — DROPS
-everything marked out of scope (``eligible_for_submission: false``) and everything
-that isn't a network target (mobile app ids, source repos, hardware, …), returning
-what it skipped and why so you can eyeball it before any module runs.
+network-testable rules and — the part that keeps you inside the program — turns an
+out-of-scope network asset (``eligible_for_submission: false``) into a **deny** rule
+that the gate enforces over the allowlist (so a carve-out under an in-scope ``*.``
+wildcard is blocked), and drops assets that aren't network targets (mobile app ids,
+source repos, hardware, …). It returns the allow rules, the deny rules, and what it
+skipped and why, so you can eyeball it before any module runs.
 
 Network asset types become scope rules; URLs are reduced to their host, CIDRs/IPs
 are kept verbatim, and ``*.example.com`` wildcards pass through (the scope gate
@@ -26,6 +28,7 @@ NETWORK_TYPES = {"URL", "WILDCARD", "CIDR", "IP_ADDRESS", "DOMAIN"}
 @dataclass
 class ParsedScope:
     rules: list[str] = field(default_factory=list)          # in-scope, de-duped
+    deny: list[str] = field(default_factory=list)           # out-of-scope network carve-outs
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (identifier, reason)
 
 
@@ -57,6 +60,7 @@ def _normalize(identifier: str) -> str | None:
 def _structured(entries: list) -> ParsedScope:
     out = ParsedScope()
     seen: set[str] = set()
+    deny_seen: set[str] = set()
     for e in entries:
         if not isinstance(e, dict):
             continue
@@ -66,9 +70,6 @@ def _structured(entries: list) -> ParsedScope:
         eligible = attrs.get("eligible_for_submission", True)
         if not ident:
             continue
-        if eligible is False:
-            out.skipped.append((ident, "out of scope (not eligible for submission)"))
-            continue
         if atype and atype not in NETWORK_TYPES:
             out.skipped.append((ident, f"not a network target ({atype})"))
             continue
@@ -76,7 +77,11 @@ def _structured(entries: list) -> ParsedScope:
         if not norm:
             out.skipped.append((ident, "could not parse as a host/CIDR"))
             continue
-        if norm not in seen:
+        if eligible is False:                # a network asset the program excludes
+            if norm not in deny_seen:
+                deny_seen.add(norm)
+                out.deny.append(norm)
+        elif norm not in seen:
             seen.add(norm)
             out.rules.append(norm)
     return out
@@ -85,9 +90,18 @@ def _structured(entries: list) -> ParsedScope:
 def _plain(text: str) -> ParsedScope:
     out = ParsedScope()
     seen: set[str] = set()
+    deny_seen: set[str] = set()
     for raw in text.splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line:
+            continue
+        if line.startswith("!"):             # explicit exclusion
+            norm = _normalize(line[1:])
+            if not norm:
+                out.skipped.append((line, "could not parse as a host/CIDR"))
+            elif norm not in deny_seen:
+                deny_seen.add(norm)
+                out.deny.append(norm)
             continue
         norm = _normalize(line)
         if not norm:
