@@ -215,6 +215,29 @@ class EreConsole(cmd.Cmd):
                   "unsupported": "warn"}.get(str(val), "dim")
         print(col(f"  check: {val}", colour))
 
+    def do_subdomains(self, arg: str) -> None:
+        """subdomains <domain> [sources]  — passive multi-source subdomain enum (shortcut).
+        Runs auxiliary/gather/subdomain_enum without selecting it; [sources] is an optional
+        comma list (e.g. crtsh,otx). Fully passive; discovered out-of-scope hosts are flagged."""
+        parts = arg.split()
+        if not parts:
+            print("usage: subdomains <domain> [sources]   e.g. subdomains example.com crtsh,otx")
+            return
+        try:
+            m = self.fw.use("auxiliary/gather/subdomain_enum")
+        except KeyError as e:
+            print(col(str(e), "error"))
+            return
+        try:
+            m.set_option("DOMAIN", parts[0])
+            if len(parts) > 1:
+                m.set_option("SOURCES", parts[1])
+            self.fw.run(m, background=True)
+            self.fw.join()
+        except (OptionError, ScopeError) as e:
+            print(col(str(e), "error"))
+        self._status()
+
     def _notes_text(self) -> str:
         """The engagement notes file's content, if any (same path the RPC uses)."""
         env = os.environ.get("EREBUS_NOTES")
