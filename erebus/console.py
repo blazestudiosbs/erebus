@@ -500,54 +500,35 @@ class EreConsole(cmd.Cmd):
         print("usage: engagement new <platform> <program> <scope-file> | show | platforms")
 
     def _engagement_new(self, platform_key: str, program: str, scopefile: str) -> None:
-        import time
         from pathlib import Path
 
         from erebus.lib import engagement as eng
-        from erebus.lib import h1scope
-        plat = eng.platform(platform_key)
         try:
             text = Path(scopefile).expanduser().read_text()
         except OSError as exc:
             print(col(f"  cannot read {scopefile}: {exc}", "error"))
             return
-        parsed = h1scope.parse(text)
-        if not parsed.rules:
-            print(col("  no in-scope targets parsed from the scope file", "error"))
+        try:
+            res = eng.setup(self.fw, platform_key, program, text)
+        except ValueError as exc:
+            print(col(f"  {exc}", "error"))
             return
 
-        op_id = self.fw.op_new(program, codename=plat.name)
-        for rule in parsed.rules:
-            self.fw.scope.allow(rule)
-        for rule in parsed.deny:
-            self.fw.scope.deny(rule)
-        self.fw.sync_op_scope()
-
-        roe = eng.render_roe(plat, program, parsed.rules, parsed.deny,
-                             time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()))
-        notes_path = Path(os.environ.get("EREBUS_NOTES")
-                          or os.path.join(os.path.expanduser("~/.erebus"), "notes.md"))
-        wrote = ""
-        try:
-            notes_path.parent.mkdir(parents=True, exist_ok=True)
-            notes_path.write_text(roe, encoding="utf-8")
-            wrote = str(notes_path)
-        except OSError as exc:
-            print(col(f"  (could not write notes file: {exc})", "warn"))
-
-        print(col(f"[+] engagement #{op_id}: {plat.name} / {program}", "good"))
-        print(col(f"    scope: {len(parsed.rules)} in-scope, {len(parsed.deny)} excluded",
+        print(col(f"[+] engagement #{res['op']}: {res['platform_name']} / {program}",
+                  "good"))
+        print(col(f"    scope: {len(res['allow'])} in-scope, {len(res['deny'])} excluded",
                   "dim"))
-        for rule in parsed.rules:
+        for rule in res["allow"]:
             print(col(f"      + {rule}", "dim"))
-        for rule in parsed.deny:
+        for rule in res["deny"]:
             print(col(f"      ! {rule} (excluded — enforced)", "accent"))
-        for ident, reason in parsed.skipped:
-            print(col(f"      - skipped {ident} — {reason}", "warn"))
-        if wrote:
-            print(col(f"    rules of engagement → {wrote} (included in op report)", "dim"))
+        for s in res["skipped"]:
+            print(col(f"      - skipped {s['identifier']} — {s['reason']}", "warn"))
+        if res["notes_path"]:
+            print(col(f"    rules of engagement → {res['notes_path']} "
+                      "(included in op report)", "dim"))
         print(col("  ── pre-flight rules ──", "accent"))
-        for rule in plat.rules:
+        for rule in res["rules"]:
             print(col(f"   • {rule}", "warn"))
         print(col("  the program brief/policy supersedes these — read it first", "warn"))
 

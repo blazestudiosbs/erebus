@@ -139,3 +139,36 @@ def test_ws_sends_snapshot_then_live_event():
         nxt = ws.receive_json()
         assert nxt["type"] == "finding.new"
         assert nxt["data"]["cve"] == "CVE-2021-44228"
+
+
+def test_engagement_endpoint_sets_gate_and_returns_summary(tmp_path, monkeypatch):
+    monkeypatch.setenv("EREBUS_NOTES", str(tmp_path / "notes.md"))
+    from fastapi.testclient import TestClient
+
+    from erebus.core.framework import Framework
+    from erebus.core.scope import ScopeError
+    from erebus.rpc.server import create_app
+
+    fw = Framework()
+    app = create_app(fw, token="tok")
+    with TestClient(app) as client:
+        plats = client.get("/engagement/platforms").json()["platforms"]
+        assert any(p["key"] == "bugcrowd" for p in plats)
+        # the setup endpoint is token-guarded
+        body = {"platform": "bugcrowd", "program": "acme",
+                "scope": "*.acme.com\n!legacy.acme.com\n"}
+        assert client.post("/engagement", json=body).status_code == 401
+        r = client.post("/engagement", headers={"Authorization": "Bearer tok"}, json=body)
+        assert r.status_code == 200
+        out = r.json()
+        assert out["allow"] == ["*.acme.com"] and out["deny"] == ["legacy.acme.com"]
+        assert out["platform_name"] == "Bugcrowd"
+        # empty scope -> 400
+        bad = {"platform": "bugcrowd", "program": "x", "scope": "# none\n"}
+        assert client.post("/engagement", headers={"Authorization": "Bearer tok"},
+                           json=bad).status_code == 400
+
+    # the gate was actually configured on the shared framework
+    fw.scope.check(["api.acme.com"])
+    with pytest.raises(ScopeError):
+        fw.scope.check(["legacy.acme.com"])     # the exclusion is enforced
