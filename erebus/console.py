@@ -433,9 +433,11 @@ class EreConsole(cmd.Cmd):
                 print(col("  (empty — deny all; add with: scope allow <cidr>)", "dim"))
         elif parts[0] == "allow" and len(parts) > 1:
             self.fw.scope.allow(parts[1])
+            self.fw.sync_op_scope()            # keep the open op's recorded scope current
             print(f"allowed {parts[1]}")
         elif parts[0] == "load" and len(parts) > 1:
             self.fw.scope.load(parts[1])
+            self.fw.sync_op_scope()
             print("loaded")
         else:
             print("usage: scope [show | allow <cidr> | load <file>]")

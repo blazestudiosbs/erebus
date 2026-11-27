@@ -128,7 +128,7 @@ def render_markdown(bundle: dict[str, Any]) -> str:
         ["Duration", _duration(op)],
     ]))
     scope = _scope(op)
-    p += ["", "Scope snapshot at open: " + (", ".join(scope) if scope else "_(empty — deny-all)_")]
+    p += ["", "Scope: " + (", ".join(scope) if scope else "_(empty — deny-all)_")]
 
     p += ["", "## Summary", ""]
     p.append(rpt._md_table(["Item", "Count"], [
@@ -273,7 +273,7 @@ def render_html(bundle: dict[str, Any], theme: str = "dark") -> str:
         ]),
     ]
     scope = _scope(op)
-    out.append('<p class="muted">Scope snapshot at open: '
+    out.append('<p class="muted">Scope: '
                + (", ".join(f"<code>{h(x)}</code>" for x in scope) if scope
                   else "(empty — deny-all)") + "</p>")
 
@@ -459,7 +459,7 @@ def render_pdf(bundle: dict[str, Any]) -> bytes:
         ["Duration", _duration(op)],
     ])
     scope = _scope(op)
-    para("Scope snapshot at open: " + (", ".join(scope) if scope else "(empty - deny-all)"),
+    para("Scope: " + (", ".join(scope) if scope else "(empty - deny-all)"),
          muted=True)
 
     heading("Summary")

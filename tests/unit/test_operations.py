@@ -166,6 +166,25 @@ def test_main_forwards_scope_and_lab_to_launch(monkeypatch) -> None:
     assert captured.get("lab") is True
 
 
+def test_scope_change_refreshes_open_op_snapshot() -> None:
+    fw = Framework()
+    fw.op_new("x")                                  # opens with empty scope (deny-all)
+    assert "10.0.0.0/24" not in (fw.current_op()["scope"] or "")
+    fw.scope.allow("10.0.0.0/24")
+    fw.sync_op_scope()
+    assert "10.0.0.0/24" in fw.current_op()["scope"]  # snapshot now reflects live scope
+
+
+def test_console_scope_load_syncs_open_op(tmp_path, capsys) -> None:
+    con = _console()
+    con.preloop()                                   # auto-op opens before any scope
+    f = tmp_path / "scope.txt"
+    f.write_text("10.1.2.0/24\n")
+    con.do_scope(f"load {f}")
+    capsys.readouterr()
+    assert "10.1.2.0/24" in con.fw.current_op()["scope"]
+
+
 def test_op_teardown_kills_pivot_relays_and_resets_dialer() -> None:
     from erebus.core.dial import SessionDialer
 
