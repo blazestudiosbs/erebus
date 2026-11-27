@@ -527,3 +527,16 @@ def test_graph_blast_reports_reuse():
     with _client(fw) as c:
         j = c.get("/homefield/blast?host=10.0.0.1", headers=AUTH).json()
         assert {r["host"] for r in j["reachable_hosts"]} == {"10.0.0.2"}
+
+
+def test_dashboard_serves_engagement_panel():
+    import pytest
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from erebus.core.framework import Framework
+    from erebus.rpc.server import create_app
+    with TestClient(create_app(Framework(), token="t")) as c:
+        html = c.get("/").text
+    assert 'id="engagementview"' in html and "New Engagement" in html
+    assert 'id="eng-platform"' in html and "engagement/platforms" in html

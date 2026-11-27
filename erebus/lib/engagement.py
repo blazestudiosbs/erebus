@@ -8,7 +8,13 @@ conservative (when unsure, it says "don't").
 """
 from __future__ import annotations
 
+import os
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from . import h1scope
 
 # Erebus modules whose output is commonly *non-qualifying* on bounty platforms —
 # useful for recon/chaining, not as standalone reports.
@@ -123,3 +129,51 @@ def render_roe(plat: Platform, program: str, allow: list[str], deny: list[str],
                   *[f"  - !{d}" for d in deny]]
     lines += ["", "## Rules", *[f"- {r}" for r in plat.rules]]
     return "\n".join(lines) + "\n"
+
+
+def notes_path() -> Path:
+    """Where the report reads engagement notes from (``$EREBUS_NOTES`` or the default)."""
+    env = os.environ.get("EREBUS_NOTES")
+    return Path(env) if env else (Path.home() / ".erebus" / "notes.md")
+
+
+def setup(framework: Any, platform_key: str, program: str, scope_text: str,
+          write_notes: bool = True) -> dict[str, Any]:
+    """Configure an engagement: open a named operation, import the scope into the
+    deny-all gate (allow + enforced exclusions), attach the platform's rules, and
+    (by default) write the rules of engagement where the report reads notes.
+
+    Shared by the console command and the dashboard endpoint so both do identically
+    the same thing. Returns a summary. Raises ValueError if no in-scope target parses.
+    """
+    plat = platform(platform_key)
+    parsed = h1scope.parse(scope_text)
+    if not parsed.rules:
+        raise ValueError("no in-scope targets parsed from the scope")
+
+    op_id = framework.op_new(program, codename=plat.name)
+    for rule in parsed.rules:
+        framework.scope.allow(rule)
+    for rule in parsed.deny:
+        framework.scope.deny(rule)
+    sync = getattr(framework, "sync_op_scope", None)
+    if callable(sync):
+        sync()
+
+    roe = render_roe(plat, program, parsed.rules, parsed.deny,
+                     time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()))
+    wrote = ""
+    if write_notes:
+        path = notes_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(roe, encoding="utf-8")
+            wrote = str(path)
+        except OSError:
+            wrote = ""
+    return {
+        "op": op_id, "platform": plat.key, "platform_name": plat.name,
+        "program": program, "allow": parsed.rules, "deny": parsed.deny,
+        "skipped": [{"identifier": i, "reason": r} for i, r in parsed.skipped],
+        "rules": plat.rules, "roe": roe, "notes_path": wrote,
+    }

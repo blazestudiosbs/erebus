@@ -553,6 +553,24 @@ def create_app(framework: Any, token: str | None = None,
             raise HTTPException(status_code=403, detail=str(exc)) from None
         return {"job": jid, "module": module.name}
 
+    @app.get("/engagement/platforms")
+    async def engagement_platforms() -> dict[str, Any]:
+        from erebus.lib import engagement as eng
+        return {"platforms": [{"key": p.key, "name": p.name}
+                              for p in eng.PLATFORMS.values()]}
+
+    @app.post("/engagement", dependencies=[Depends(require_token)])
+    async def engagement_new(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
+        from erebus.lib import engagement as eng
+        program = str(payload.get("program", "")).strip()
+        if not program:
+            raise HTTPException(status_code=400, detail="missing 'program'")
+        try:
+            return eng.setup(framework, str(payload.get("platform", "")),
+                             program, str(payload.get("scope", "")))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+
     @app.post("/operations", dependencies=[Depends(require_token)])
     async def open_operation(payload: Dict[str, Any]) -> dict[str, Any]:  # noqa: UP006
         name = str(payload.get("name", "")).strip()

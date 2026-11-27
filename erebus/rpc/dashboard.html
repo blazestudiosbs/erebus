@@ -584,6 +584,20 @@
         <div class="tgt-status" id="rep-status"></div>
       </div>
     </div>
+    <div class="view-panel" id="engagementview" style="display:none">
+      <div class="notes-wrap">
+        <h2>New Engagement</h2>
+        <p class="psub">Pick a platform, paste or load the program's scope, and Erebus sets the deny-all gate (in-scope allowed, out-of-scope excluded), attaches the platform's rules of engagement, and records them in the report. The program's own brief/policy always supersedes these - this is a pre-flight aid, not legal advice.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+          <select id="eng-platform" style="background:rgba(10,8,18,0.7);border:1px solid #2a2340;border-radius:8px;padding:8px 10px;color:#e6e1ff"></select>
+          <input id="eng-program" placeholder="program handle (e.g. acme)" style="background:rgba(10,8,18,0.7);border:1px solid #2a2340;border-radius:8px;padding:8px 10px;color:#e6e1ff"/>
+          <label style="color:#9a92c0;font-size:13px">scope file <input type="file" id="eng-file" accept=".txt,.json,.csv,.md"/></label>
+        </div>
+        <textarea class="notes-ta" id="eng-scope" spellcheck="false" placeholder="Paste the program scope - one asset per line, or a HackerOne structured-scope JSON export.&#10;&#10;*.example.com&#10;api.example.com&#10;!legacy.example.com     (a ! line = out of scope, enforced)&#10;203.0.113.0/24"></textarea>
+        <div style="margin-top:10px"><button id="eng-go" onclick="engSetup()">Set up engagement</button> <span id="eng-status" style="color:#9a92c0;font-size:13px;margin-left:8px"></span></div>
+        <div id="eng-results" style="margin-top:14px"></div>
+      </div>
+    </div>
     <div class="view-panel" id="notesview" style="display:none">
       <div class="notes-wrap">
         <h2>Notes</h2>
@@ -656,9 +670,9 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', Remediation:'remediationview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Detections:'detectionsview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Engagement:'engagementview', Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', Remediation:'remediationview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Detections:'detectionsview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
-  var GROUPS={ Flow:['Flow'], Recon:['Targets','Modules','DNS'], Findings:['Findings','Remediation'], OSINT:['OSINT'],
+  var GROUPS={ Flow:['Flow'], Recon:['Engagement','Targets','Modules','DNS'], Findings:['Findings','Remediation'], OSINT:['OSINT'],
     Access:['Sessions','Pivots','Creds'], Homefield:['Homefield'], Jobs:['Jobs'], Research:['Research'],
     'ATT&CK':['ATT&CK','Detections'], Ops:['Ops'], Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
   var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
@@ -692,7 +706,8 @@
     ['toggle','hint'].forEach(function(c){ var el=document.querySelector('.'+c); if(el) el.style.display=flow?'':'none'; });
     renderSubnav(name);
     if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
-    if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
+    if(name==='Engagement'){ engInit(); }
+    else if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
     else if(name==='Modules'){ loadModules(); }
     else if(name==='DNS'){ dnsInit(); }
     else if(name==='Guide'){ wikiInit(); }
@@ -725,6 +740,61 @@
     .then(function(r){ return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};},function(){return {ok:r.ok,status:r.status,j:{}};}); }); }
   function apiDelete(path){ return fetch(path,{method:'DELETE',headers:authH()})
     .then(function(r){ return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};},function(){return {ok:r.ok,status:r.status,j:{}};}); }); }
+
+  // ---- engagement setup (pick platform + scope -> gate + rules) ---------
+  var engLoaded=false;
+  function engInit(){
+    var sel=document.getElementById('eng-platform');
+    if(sel && !engLoaded){
+      fetch('engagement/platforms',{headers:authH(),cache:'no-store'})
+        .then(function(r){return r.json();})
+        .then(function(d){ sel.innerHTML='';
+          (d.platforms||[]).forEach(function(p){ var o=document.createElement('option');
+            o.value=p.key; o.textContent=p.name; sel.appendChild(o); });
+          engLoaded=true; })
+        .catch(function(){});
+    }
+    var f=document.getElementById('eng-file');
+    if(f && !f._wired){ f._wired=true; f.onchange=function(){
+      var file=f.files&&f.files[0]; if(!file) return;
+      var rd=new FileReader(); rd.onload=function(){
+        var ta=document.getElementById('eng-scope'); if(ta) ta.value=rd.result; };
+      rd.readAsText(file); }; }
+  }
+  function engStatus(msg,color){ var s=document.getElementById('eng-status');
+    if(s){ s.textContent=msg||''; s.style.color=color||'#9a92c0'; } }
+  function engSetup(){
+    if(!hasTok()){ offlineMsg(engStatus); return; }
+    var platform=(document.getElementById('eng-platform')||{}).value||'generic';
+    var program=(((document.getElementById('eng-program')||{}).value)||'').trim();
+    var scope=((document.getElementById('eng-scope')||{}).value)||'';
+    if(!program){ engStatus('enter a program handle','#ff9d2e'); return; }
+    if(!scope.replace(/\s+/g,'')){ engStatus('paste or load the scope','#ff9d2e'); return; }
+    engStatus('setting up...','');
+    apiPost('engagement',{platform:platform,program:program,scope:scope}).then(function(res){
+      if(!res.ok){ engStatus((res.j&&res.j.detail)||('error '+res.status),'#ff5f6d'); return; }
+      engStatus('engagement #'+res.j.op+' ready','#4ade80');
+      engRender(res.j);
+      if(typeof loadScope==='function') loadScope();
+    });
+  }
+  function engRender(d){
+    var box=document.getElementById('eng-results'); if(!box) return;
+    var h='<div style="border:1px solid #2a2340;border-radius:10px;padding:14px 16px;background:rgba(10,8,18,0.5)">';
+    h+='<div style="font-weight:600;color:#e6e1ff">'+escHtml(d.platform_name)+' / '+escHtml(d.program)+' &middot; operation #'+escHtml(String(d.op))+'</div>';
+    h+='<div style="margin-top:10px;color:#9a92c0;font-size:12px;text-transform:uppercase;letter-spacing:.5px">In scope ('+(d.allow||[]).length+')</div>';
+    (d.allow||[]).forEach(function(r){ h+='<div style="color:#8fd19e;font-family:ui-monospace,monospace;font-size:13px">+ '+escHtml(r)+'</div>'; });
+    if((d.deny||[]).length){ h+='<div style="margin-top:8px;color:#9a92c0;font-size:12px;text-transform:uppercase;letter-spacing:.5px">Excluded - enforced ('+d.deny.length+')</div>';
+      d.deny.forEach(function(r){ h+='<div style="color:#ff9d2e;font-family:ui-monospace,monospace;font-size:13px">! '+escHtml(r)+'</div>'; }); }
+    if((d.skipped||[]).length){ h+='<div style="margin-top:8px;color:#6e6a85;font-size:12px">skipped: ';
+      h+=d.skipped.map(function(s){ return escHtml(s.identifier)+' ('+escHtml(s.reason)+')'; }).join(', ')+'</div>'; }
+    h+='<div style="margin-top:12px;color:#9a92c0;font-size:12px;text-transform:uppercase;letter-spacing:.5px">Rules of engagement</div>';
+    (d.rules||[]).forEach(function(r){ h+='<div style="color:#cbb8ff;font-size:13px;margin-top:4px">&bull; '+escHtml(r)+'</div>'; });
+    if(d.notes_path){ h+='<div style="margin-top:12px;color:#6e6a85;font-size:12px">Rules written to '+escHtml(d.notes_path)+' - included in the op report.</div>'; }
+    h+='<div style="margin-top:6px;color:#6e6a85;font-size:12px">The program brief/policy supersedes these. Read it, and its prohibited-activities list, before running anything.</div>';
+    h+='</div>';
+    box.innerHTML=h;
+  }
 
   // ---- operation filter (shared across data tabs) ----------------------
   var OPF='';  // '' = all operations; otherwise an op id (string)
