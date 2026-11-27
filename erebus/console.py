@@ -479,6 +479,91 @@ class EreConsole(cmd.Cmd):
         print(col("  review `scope show` against the program policy — and its "
                   "prohibited-activities list — before running anything", "warn"))
 
+    def do_engagement(self, arg: str) -> None:
+        """engagement new <platform> <program> <scope-file> | show | platforms
+
+        Set up a bounty engagement in one step: open a named operation, import the
+        program's scope into the deny-all gate, attach the platform's rules of
+        engagement, and record them in the report. platform = bugcrowd|hackerone|generic."""
+        from erebus.lib import engagement as eng
+        parts = shlex.split(arg)
+        if not parts or parts[0] == "platforms":
+            for p in eng.PLATFORMS.values():
+                print(f"  {p.key:10} {p.name}")
+            return
+        if parts[0] == "show":
+            self._engagement_show()
+            return
+        if parts[0] == "new" and len(parts) >= 4:
+            self._engagement_new(parts[1], parts[2], parts[3])
+            return
+        print("usage: engagement new <platform> <program> <scope-file> | show | platforms")
+
+    def _engagement_new(self, platform_key: str, program: str, scopefile: str) -> None:
+        import time
+        from pathlib import Path
+
+        from erebus.lib import engagement as eng
+        from erebus.lib import h1scope
+        plat = eng.platform(platform_key)
+        try:
+            text = Path(scopefile).expanduser().read_text()
+        except OSError as exc:
+            print(col(f"  cannot read {scopefile}: {exc}", "error"))
+            return
+        parsed = h1scope.parse(text)
+        if not parsed.rules:
+            print(col("  no in-scope targets parsed from the scope file", "error"))
+            return
+
+        op_id = self.fw.op_new(program, codename=plat.name)
+        for rule in parsed.rules:
+            self.fw.scope.allow(rule)
+        for rule in parsed.deny:
+            self.fw.scope.deny(rule)
+        self.fw.sync_op_scope()
+
+        roe = eng.render_roe(plat, program, parsed.rules, parsed.deny,
+                             time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()))
+        notes_path = Path(os.environ.get("EREBUS_NOTES")
+                          or os.path.join(os.path.expanduser("~/.erebus"), "notes.md"))
+        wrote = ""
+        try:
+            notes_path.parent.mkdir(parents=True, exist_ok=True)
+            notes_path.write_text(roe, encoding="utf-8")
+            wrote = str(notes_path)
+        except OSError as exc:
+            print(col(f"  (could not write notes file: {exc})", "warn"))
+
+        print(col(f"[+] engagement #{op_id}: {plat.name} / {program}", "good"))
+        print(col(f"    scope: {len(parsed.rules)} in-scope, {len(parsed.deny)} excluded",
+                  "dim"))
+        for rule in parsed.rules:
+            print(col(f"      + {rule}", "dim"))
+        for rule in parsed.deny:
+            print(col(f"      ! {rule} (excluded — enforced)", "accent"))
+        for ident, reason in parsed.skipped:
+            print(col(f"      - skipped {ident} — {reason}", "warn"))
+        if wrote:
+            print(col(f"    rules of engagement → {wrote} (included in op report)", "dim"))
+        print(col("  ── pre-flight rules ──", "accent"))
+        for rule in plat.rules:
+            print(col(f"   • {rule}", "warn"))
+        print(col("  the program brief/policy supersedes these — read it first", "warn"))
+
+    def _engagement_show(self) -> None:
+        op = self.fw.current_op()
+        if op is None:
+            print(col("  no engagement open — start one with: "
+                      "engagement new <platform> <program> <scope-file>", "dim"))
+            return
+        print(col(f"◆ engagement #{op['id']} — {op['codename'] or '?'} / {op['name']}",
+                  "accent"))
+        rules = self.fw.scope.show()
+        print(col("  scope:" if rules else "  scope: (empty)", "dim"))
+        for r in rules:
+            print("    " + r)
+
     def do_hosts(self, arg: str) -> None:
         """hosts [-a]  — list discovered targets (hides 'down' hosts; -a shows all)."""
         show_all = arg.strip() in ("-a", "--all", "all")
