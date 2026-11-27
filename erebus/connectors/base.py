@@ -118,6 +118,22 @@ class Connector:
         except (UnicodeDecodeError, ValueError):
             raise ConnectorError(f"{self.name}: {safe_path} returned invalid JSON") from None
 
+    def get_text(self, path: str, params: dict[str, str] | None = None) -> str:
+        """GET ``base_url + path`` and return the body as text (for CSV/plain endpoints)."""
+        self._check_network()
+        url = self.base_url + path + (f"?{urllib.parse.urlencode(params)}" if params else "")
+        safe_path = path + (f"?{urllib.parse.urlencode(params)}" if params else "")
+        headers = {"User-Agent": USER_AGENT, "Accept": "text/plain, */*"}
+        try:
+            status, body = self.transport(url, headers, self.timeout)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise ConnectorError(f"{self.name}: {safe_path} unreachable: {exc}") from None
+        if status in (401, 403):
+            raise MissingKey(f"{self.name}: access rejected (HTTP {status})")
+        if status != 200:
+            raise ConnectorError(f"{self.name}: {safe_path} returned HTTP {status}")
+        return body.decode("utf-8", "replace")
+
     def _check_network(self) -> None:
         """Shared guard for every outbound call: offline, Tor, https-only."""
         if self.offline:

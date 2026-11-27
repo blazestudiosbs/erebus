@@ -5,6 +5,17 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Multi-source passive subdomain enum (`gather/subdomain_enum`)**: fans a domain out
+  across several free, keyless OSINT datasets and merges them — certificate-transparency
+  logs (crt.sh), HackerTarget's host CSV, AlienVault OTX passive DNS, and the Anubis/jldc
+  subdomain set — for far wider discovery than any single source while staying fully
+  passive (no packets to the target, what bounty programs want for recon). Each host is
+  tagged with the source(s) that saw it; hosts outside the scope allowlist are flagged
+  "do not test"; `RESOLVE` keeps only live names; a source that errors or rate-limits is
+  skipped, not fatal. `SOURCES` selects the subset. Complements the crt.sh-only
+  `gather/dns_enum`. New keyless connectors (`connectors/passive.py`) and a `get_text`
+  helper on the connector base for CSV endpoints; every source has pure, injected-transport
+  parser tests.
 - **Remediation & risk scoring (Phase 6)**: findings become a prioritized fix plan. `reporting/remediation.py` scores each finding as **severity x exposure x reachability** (sharpened by CVSS/KEV/EPSS), where exposure is the services on the host and reachability is its blast radius from reused accounts (Homefield graph); findings are ranked and bucketed P1-P4, each with concrete fix guidance (CVE -> patch, creds -> rotate + MFA, headers -> set them, SUID/sudo -> least privilege, open port -> firewall, ...). Surfaced on the console `remediation [| export <path>]`, `GET /remediation` (`?op=` scopes it), a **Remediation** dashboard tab, and a Remediation-plan section folded into the per-operation report. Derived/read-only.
 - **"What to log" onboarding (completes Phase 5)**: each detection now comes with the concrete, per-platform steps to produce the telemetry it needs. `data_source_guidance()` maps every ATT&CK data source (Process Creation, Authentication Logs, File Access, Cloud Service, …) to what it is and how to turn it on (Sysmon EIDs, auditd rules, PowerShell script-block logging, CloudTrail, …). Surfaced on the console `detections log`, in the `GET /detections` payload, as a "what to log" panel on the Detections tab, and folded into the per-operation report and the Markdown export.
 - **Detections in the per-operation report**: the per-op report now carries a **Detections (purple-team)** section — for every technique the operation exercised (from its findings' ATT&CK tags), the telemetry to watch and a Sigma-style rule, rendered in the Markdown and HTML exports (full rules) and the PDF (a compact watch/logsource table). Built loader-free via `detections_for_techniques()` so it works from an unsealed archive. Completes the Phase 5 follow-up.
