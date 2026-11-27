@@ -5,6 +5,13 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Two more passive subdomain sources — Certspotter & RapidDNS**: `gather/subdomain_enum`
+  now fans out across six free, keyless datasets. SSLMate **Certspotter** adds a second
+  certificate-transparency view (JSON issuances → `dns_names`); **RapidDNS** adds a
+  passive-DNS set parsed resiliently by scanning the HTML for in-domain FQDNs (no JSON API,
+  so the parser doesn't depend on the page's markup). Both are in the default source set and
+  degrade gracefully if rate-limited. New keyless connectors + pure parsers, with
+  injected-transport tests.
 - **Scope flags in the dashboard Subdomains list**: each discovered host is now coloured by
   its authoritative scope status — green **in scope**, amber **out of scope — do not test**,
   red **excluded — do not test** (deny-list) — with an in/out tally, so out-of-scope hosts
