@@ -5,6 +5,10 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Console `subdomains <domain> [sources]` shortcut**: one-liner that runs
+  `gather/subdomain_enum` without `use`/`set`/`run`, with an optional comma-list of sources
+  (e.g. `subdomains example.com crtsh,otx`). Runs on a throwaway module instance so it never
+  clobbers the currently-selected module.
 - **Multi-source passive subdomain enum (`gather/subdomain_enum`)**: fans a domain out
   across several free, keyless OSINT datasets and merges them — certificate-transparency
   logs (crt.sh), HackerTarget's host CSV, AlienVault OTX passive DNS, and the Anubis/jldc
