@@ -5,14 +5,21 @@ paired ``parse_*`` function pulls the in-domain hostnames out of it. All of thes
 passive OSINT (certificate logs, passive-DNS archives), so they never touch the
 target - the same guardrail ``crtsh`` follows. Module-facing: ``subdomain_enum``.
 
-Sources: HackerTarget hostsearch (CSV), AlienVault OTX passive DNS (JSON), and the
-Anubis/jldc subdomain dataset (JSON array). Each is free and keyless.
+Sources: HackerTarget hostsearch (CSV), AlienVault OTX passive DNS (JSON), the
+Anubis/jldc subdomain dataset (JSON array), SSLMate Certspotter issuances (JSON) and
+RapidDNS (HTML). Each is free and keyless.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .base import Connector
+
+# A permissive FQDN matcher, used to scrape hostnames out of HTML (RapidDNS has no
+# JSON API). We over-match on purpose and then keep only in-domain names, so the parse
+# stays correct even if the page's markup changes.
+_FQDN_RE = re.compile(r"(?:[A-Za-z0-9_-]+\.)+[A-Za-z0-9-]{2,}")
 
 
 def _clean(raw: str) -> str:
@@ -96,6 +103,56 @@ def parse_anubis(data: Any, domain: str) -> set[str]:
         return out
     for raw in data:
         host = _clean(str(raw))
+        if _in_domain(host, domain):
+            out.add(host)
+    return out
+
+
+class CertspotterConnector(Connector):
+    name = "certspotter"
+    base_url = "https://api.certspotter.com"
+    key_name = ""  # SSLMate Certspotter keyless tier (rate-limited); no packets to the target
+
+    def issuances(self, domain: str) -> Any:
+        """Certspotter's CT issuances for ``domain`` and its subdomains (dns_names)."""
+        return self.get_json("/v1/issuances", {
+            "domain": domain, "include_subdomains": "true", "expand": "dns_names"})
+
+
+def parse_certspotter(data: Any, domain: str) -> set[str]:
+    """Extract in-domain hostnames from a Certspotter issuances JSON array."""
+    domain = _clean(domain)
+    out: set[str] = set()
+    if not isinstance(data, list):
+        return out
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        for raw in row.get("dns_names") or []:
+            host = _clean(str(raw))
+            if _in_domain(host, domain):
+                out.add(host)
+    return out
+
+
+class RapidDnsConnector(Connector):
+    name = "rapiddns"
+    base_url = "https://rapiddns.io"
+    key_name = ""  # public subdomain dataset (HTML); no packets to the target
+
+    def subdomains(self, domain: str) -> str:
+        """RapidDNS's subdomain page for ``domain`` (HTML; parsed by scraping hostnames)."""
+        return self.get_text(f"/subdomain/{domain}", {"full": "1"})
+
+
+def parse_rapiddns(text: str, domain: str) -> set[str]:
+    """Extract in-domain hostnames from RapidDNS HTML by scanning for FQDNs."""
+    domain = _clean(domain)
+    out: set[str] = set()
+    if not text:
+        return out
+    for m in _FQDN_RE.findall(text):
+        host = _clean(m)
         if _in_domain(host, domain):
             out.add(host)
     return out

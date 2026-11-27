@@ -8,11 +8,15 @@ import json
 import erebus.modules.auxiliary.gather.subdomain_enum as se
 from erebus.connectors.passive import (
     AnubisConnector,
+    CertspotterConnector,
     HackerTargetConnector,
     OtxConnector,
+    RapidDnsConnector,
     parse_anubis,
+    parse_certspotter,
     parse_hackertarget,
     parse_otx,
+    parse_rapiddns,
 )
 from erebus.connectors.vault import MemoryVault
 from erebus.core.framework import Framework
@@ -69,6 +73,28 @@ def test_parse_anubis_array():
     assert parse_anubis({"not": "a list"}, "caporia.co") == set()
 
 
+def test_parse_certspotter_dns_names():
+    data = [
+        {"dns_names": ["*.caporia.co", "www.caporia.co"]},
+        {"dns_names": ["mx.caporia.co", "unrelated.net"]},   # other domain dropped
+        {"no_dns_names": True},                              # malformed row ignored
+    ]
+    assert parse_certspotter(data, "caporia.co") == {
+        "caporia.co", "www.caporia.co", "mx.caporia.co"}     # wildcard -> apex
+    assert parse_certspotter({"not": "a list"}, "caporia.co") == set()
+
+
+def test_parse_rapiddns_scrapes_html():
+    html = ("<table><tr><td>www.caporia.co</td><td>A</td></tr>"
+            "<tr><td>api.caporia.co</td></tr>"
+            "<tr><td>mail.other.com</td></tr>"           # different domain dropped
+            "<tr><td>caporia.co</td></tr></table>")
+    assert parse_rapiddns(html, "caporia.co") == {
+        "www.caporia.co", "api.caporia.co", "caporia.co"}
+    assert parse_rapiddns("", "caporia.co") == set()
+    assert parse_rapiddns("<html>no hosts here</html>", "caporia.co") == set()
+
+
 # --- connectors (fake transport, assert the URL) ----------------------------
 
 def test_connector_urls():
@@ -84,6 +110,15 @@ def test_connector_urls():
     AnubisConnector(MemoryVault(), transport=t).subdomains("caporia.co")
     assert "jldc.me/anubis/subdomains/caporia.co" in t.calls[0]
 
+    t = _Transport({"certspotter": (200, b"[]")})
+    CertspotterConnector(MemoryVault(), transport=t).issuances("caporia.co")
+    assert "api.certspotter.com/v1/issuances" in t.calls[0]
+    assert "domain=caporia.co" in t.calls[0] and "include_subdomains=true" in t.calls[0]
+
+    t = _Transport({"rapiddns": (200, b"")})
+    RapidDnsConnector(MemoryVault(), transport=t).subdomains("caporia.co")
+    assert "rapiddns.io/subdomain/caporia.co" in t.calls[0] and "full=1" in t.calls[0]
+
 
 # --- module run (merge sources, scope flag, resolve) ------------------------
 
@@ -94,6 +129,8 @@ def _wire(fw: Framework) -> None:
         "hackertarget": (200, b"api.caporia.co,203.0.113.2\nwww.caporia.co,203.0.113.1"),
         "otx": (200, json.dumps({"passive_dns": [{"hostname": "vpn.caporia.co"}]}).encode()),
         "jldc": (200, json.dumps(["legacy.caporia.co"]).encode()),
+        "certspotter": (200, json.dumps([{"dns_names": ["ct.caporia.co"]}]).encode()),
+        "rapiddns": (200, b"<td>rapid.caporia.co</td>"),
     })
 
 
@@ -111,8 +148,9 @@ def test_module_run_merges_sources_and_flags_scope(monkeypatch):
     fw.run(m, background=False)
 
     hosts = {dict(h)["host"] for h in fw.store.hosts()}
-    # union across crt.sh + hackertarget + otx + anubis
-    assert {"www.caporia.co", "api.caporia.co", "vpn.caporia.co", "legacy.caporia.co"} <= hosts
+    # union across all six sources (crt.sh, hackertarget, otx, anubis, certspotter, rapiddns)
+    assert {"www.caporia.co", "api.caporia.co", "vpn.caporia.co", "legacy.caporia.co",
+            "ct.caporia.co", "rapid.caporia.co"} <= hosts
 
 
 def test_module_run_skips_unresolvable_when_resolve_on(monkeypatch):
@@ -156,4 +194,5 @@ def test_sources_option_selects_subset(monkeypatch):
     fw.run(m, background=False)
     calls = " ".join(fw.http_transport.calls)
     assert "crt.sh" in calls
-    assert "hackertarget" not in calls and "otx" not in calls and "jldc" not in calls
+    for other in ("hackertarget", "otx", "jldc", "certspotter", "rapiddns"):
+        assert other not in calls

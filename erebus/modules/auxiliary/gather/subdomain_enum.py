@@ -1,8 +1,9 @@
 """Multi-source passive subdomain enumeration (no API key, no packets to the target).
 
 Fans a domain out across several free, keyless OSINT datasets and merges the results:
-certificate-transparency logs (crt.sh), HackerTarget's host CSV, AlienVault OTX passive
-DNS, and the Anubis/jldc subdomain set. More sources than any one alone, so the recon
+certificate-transparency logs (crt.sh, Certspotter), HackerTarget's host CSV, AlienVault
+OTX passive DNS, the Anubis/jldc subdomain set and RapidDNS. More sources than any one, so
+the recon
 net is wider - and still fully passive, which is what bug-bounty programs want for
 discovery. Each discovered host is tagged with the source(s) that saw it; hosts outside
 the scope allowlist are flagged "do not test". Optionally resolves each name to keep only
@@ -20,11 +21,15 @@ from erebus.connectors.base import Connector, ConnectorError, NetworkDisabled
 from erebus.connectors.crtsh import CrtShConnector, parse_crtsh
 from erebus.connectors.passive import (
     AnubisConnector,
+    CertspotterConnector,
     HackerTargetConnector,
     OtxConnector,
+    RapidDnsConnector,
     parse_anubis,
+    parse_certspotter,
     parse_hackertarget,
     parse_otx,
+    parse_rapiddns,
 )
 from erebus.core import events as ev
 from erebus.core.module_base import Auxiliary, Rank
@@ -41,8 +46,10 @@ _SOURCES: dict[str, tuple[type[Connector], Callable[[Any, str], Any],
     "hackertarget": (HackerTargetConnector, lambda c, d: c.hostsearch(d), parse_hackertarget),
     "otx": (OtxConnector, lambda c, d: c.passive_dns(d), parse_otx),
     "anubis": (AnubisConnector, lambda c, d: c.subdomains(d), parse_anubis),
+    "certspotter": (CertspotterConnector, lambda c, d: c.issuances(d), parse_certspotter),
+    "rapiddns": (RapidDnsConnector, lambda c, d: c.subdomains(d), parse_rapiddns),
 }
-_DEFAULT_SOURCES = "crtsh,hackertarget,otx,anubis"
+_DEFAULT_SOURCES = "crtsh,hackertarget,otx,anubis,certspotter,rapiddns"
 
 
 class SubdomainEnum(Auxiliary):
@@ -51,7 +58,8 @@ class SubdomainEnum(Auxiliary):
                    "(crt.sh, HackerTarget, OTX, Anubis; no key)")
     authors = ["Erebus"]
     references = ["https://crt.sh", "https://hackertarget.com",
-                  "https://otx.alienvault.com", "https://jldc.me/anubis"]
+                  "https://otx.alienvault.com", "https://jldc.me/anubis",
+                  "https://sslmate.com/certspotter", "https://rapiddns.io"]
     attack = ["T1596.001", "T1596.003"]
     rank = Rank.NORMAL
     options = [
