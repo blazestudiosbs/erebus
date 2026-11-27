@@ -36,12 +36,12 @@ def test_normalize_shapes():
     assert h1scope._normalize("") is None
 
 
-def test_parse_structured_keeps_network_drops_rest():
+def test_parse_structured_keeps_network_denies_excluded_drops_rest():
     p = h1scope.parse(_STRUCTURED)
     assert p.rules == ["api.example.com", "*.example.com", "203.0.113.0/24",
                        "198.51.100.7"]
+    assert p.deny == ["legacy.example.com"]          # out-of-scope network -> deny rule
     reasons = {ident: reason for ident, reason in p.skipped}
-    assert "out of scope" in reasons["https://legacy.example.com"]
     assert "not a network target" in reasons["com.example.app"]
 
 
@@ -75,6 +75,8 @@ def test_console_scope_import_enforces_gate(tmp_path, capsys):
     sc.check(["api.example.com"])                 # exact in-scope host — ok
     sc.check(["anything.example.com"])            # covered by *.example.com — ok
     sc.check(["203.0.113.50"])                    # inside the CIDR — ok
+    with pytest.raises(ScopeError):
+        sc.check(["legacy.example.com"])          # out-of-scope carve-out — excluded
     with pytest.raises(ScopeError):
         sc.check(["example.org"])                 # not imported — denied
     with pytest.raises(ScopeError):

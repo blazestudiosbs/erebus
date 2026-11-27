@@ -53,3 +53,31 @@ def test_wildcard_shown_and_cleared():
     assert sc.show() == []
     with pytest.raises(ScopeError):
         sc.check(["www.caporia.co"])
+
+
+def test_deny_overrides_allow_wildcard():
+    sc = Scope(allow=["*.example.com"], deny=["legacy.example.com"])
+    sc.check(["api.example.com"])                 # allowed by the wildcard
+    with pytest.raises(ScopeError):
+        sc.check(["legacy.example.com"])          # excluded despite the wildcard
+
+
+def test_deny_cidr_carveout():
+    sc = Scope(allow=["10.0.0.0/8"], deny=["10.1.2.0/24"])
+    sc.check(["10.9.9.9"])
+    with pytest.raises(ScopeError):
+        sc.check(["10.1.2.50"])
+
+
+def test_bang_prefix_in_scope_file_is_exclusion():
+    sc = Scope()
+    sc.load_text("*.example.com\n!internal.example.com\n")
+    sc.check(["www.example.com"])
+    with pytest.raises(ScopeError):
+        sc.check(["internal.example.com"])
+
+
+def test_show_includes_exclusions():
+    sc = Scope(allow=["*.example.com"], deny=["legacy.example.com"])
+    shown = sc.show()
+    assert "*.example.com" in shown and "!legacy.example.com" in shown
