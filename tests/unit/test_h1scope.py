@@ -81,3 +81,60 @@ def test_console_scope_import_enforces_gate(tmp_path, capsys):
         sc.check(["example.org"])                 # not imported — denied
     with pytest.raises(ScopeError):
         sc.check(["com.example.app"])             # the app id was skipped — denied
+
+
+# HackerOne's "Export scopes" button yields CSV, not JSON — same columns. The quoted
+# instruction field can carry commas and newlines, so the csv module (not splitlines)
+# must parse it.
+_CSV = (
+    "identifier,asset_type,instruction,eligible_for_bounty,eligible_for_submission,"
+    "max_severity,created_at\n"
+    'https://github.com/acme/repo,SOURCE_CODE,"Partial scope only:\n'
+    'code/crates, minus tests.",true,true,critical,2026-01-01\n'
+    'api.acme.com,URL,"",true,true,critical,2026-01-01\n'
+    '*.acme.com,WILDCARD,"Only Acme-owned assets.",true,true,critical,2026-01-01\n'
+    'legacy.acme.com,URL,"",false,false,none,2026-01-01\n'
+    '203.0.113.0/24,CIDR,"",true,true,high,2026-01-01\n'
+)
+
+
+def test_parse_h1_csv_export():
+    p = h1scope.parse(_CSV)
+    assert p.rules == ["api.acme.com", "*.acme.com", "203.0.113.0/24"]
+    assert p.deny == ["legacy.acme.com"]          # eligible_for_submission=false -> deny
+    # the SOURCE_CODE repo (with commas/newlines in its quoted instruction) is skipped,
+    # and its embedded text did not leak in as a bogus rule
+    assert [i for i, _ in p.skipped] == ["https://github.com/acme/repo"]
+    assert all("crates" not in r for r in p.rules)
+
+
+def test_csv_eligibility_string_false_is_denied():
+    # a string "false" in CSV must deny, not be treated as truthy
+    csv_text = ("identifier,asset_type,eligible_for_submission\n"
+                "in.acme.com,URL,true\n"
+                "out.acme.com,URL,false\n")
+    p = h1scope.parse(csv_text)
+    assert p.rules == ["in.acme.com"] and p.deny == ["out.acme.com"]
+
+
+def test_csv_gate_matches_export(tmp_path, capsys):
+    from erebus.console import EreConsole
+    f = tmp_path / "scopes.csv"
+    f.write_text(_CSV)
+    con = EreConsole(framework=Framework(), banner=False)
+    con.do_scope(f"import {f}")
+    capsys.readouterr()
+    sc = con.fw.scope
+    sc.check(["api.acme.com"])
+    sc.check(["anything.acme.com"])               # under *.acme.com
+    sc.check(["203.0.113.9"])
+    with pytest.raises(ScopeError):
+        sc.check(["legacy.acme.com"])             # denied carve-out
+    with pytest.raises(ScopeError):
+        sc.check(["github.com"])                  # SOURCE_CODE skipped -> not in scope
+
+
+def test_plain_list_not_mistaken_for_csv():
+    # a comma-free plain list must still go through the plain path
+    p = h1scope.parse("*.example.com\napi.example.com\n")
+    assert p.rules == ["*.example.com", "api.example.com"]

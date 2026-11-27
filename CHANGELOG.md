@@ -5,6 +5,14 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **HackerOne CSV scope import**: the scope parser now reads the CSV that HackerOne's
+  "Export scopes" button produces, not just the JSON API shape or a plain list — so you can
+  paste or upload the export straight from HackerOne. It uses the `csv` module (quoted
+  `instruction` fields carry commas and newlines that would otherwise corrupt the rows),
+  coerces the string `eligible_for_submission` to a bool (`"false"` denies, not "truthy
+  string → in scope"), and runs the same eligibility logic as the JSON path: eligible
+  network assets allowed, ineligible ones denied as carve-outs, source-code/mobile assets
+  skipped. The dashboard Engagement hint now says CSV or JSON.
 - **Two more passive subdomain sources — Certspotter & RapidDNS**: `gather/subdomain_enum`
   now fans out across six free, keyless datasets. SSLMate **Certspotter** adds a second
   certificate-transparency view (JSON issuances → `dns_names`); **RapidDNS** adds a
