@@ -851,16 +851,32 @@
     fetch('hosts',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
       subRender((d.hosts||[]).filter(function(h){ return subUnderDomain(h.host); })); }).catch(function(){});
   }
+  function subScope(s){
+    // authoritative status from GET /hosts (framework.scope.classify); colour + label
+    if(s==='in')        return {col:'#8fd19e', tag:'', warn:false};
+    if(s==='excluded')  return {col:'#ff5f6d', tag:'excluded — do not test', warn:true};
+    if(s==='out')       return {col:'#ff9d2e', tag:'out of scope — do not test', warn:true};
+    return {col:'#cbb8ff', tag:'', warn:false};   // 'off' (no gate) or older server
+  }
   function subRender(rows){
     var box=document.getElementById('sub-results'); if(!box) return;
     rows.sort(function(a,b){ return (a.host||'').localeCompare(b.host||''); });
     if(!rows.length){ box.innerHTML='<div style="color:#6e6a85;font-size:13px">'
       +(subJob!==null?'no subdomains recorded yet — job running…':'enter a domain and hit Enumerate')+'</div>'; return; }
+    var nIn=0, nOut=0;
+    rows.forEach(function(r){ if(r.scope==='in') nIn++; else if(r.scope==='out'||r.scope==='excluded') nOut++; });
+    var summary='Discovered under '+escHtml(subDomain)+' ('+rows.length+')';
+    if(nIn||nOut){ summary+=' — <span style="color:#8fd19e">'+nIn+' in scope</span>'
+      +', <span style="color:#ff9d2e">'+nOut+' out</span>'; }
     var h='<div style="color:#9a92c0;font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">'
-      +'Discovered under '+escHtml(subDomain)+' ('+rows.length+')</div>';
+      +summary+'</div>';
     h+='<div style="display:flex;flex-direction:column;gap:5px">';
-    rows.forEach(function(r){ h+='<div style="font-family:ui-monospace,monospace;font-size:13px;color:#8fd19e">'
-      +escHtml(r.host||'')+'<span style="color:#6e6a85;margin-left:8px">'+escHtml(r.status||'')+'</span></div>'; });
+    rows.forEach(function(r){ var sc=subScope(r.scope);
+      h+='<div style="font-family:ui-monospace,monospace;font-size:13px;color:'+sc.col+'">'
+        +escHtml(r.host||'')
+        +'<span style="color:#6e6a85;margin-left:8px">'+escHtml(r.status||'')+'</span>'
+        +(sc.tag?('<span style="color:'+sc.col+';margin-left:8px;font-size:11px;text-transform:uppercase;letter-spacing:.5px">'+sc.tag+'</span>'):'')
+        +'</div>'; });
     h+='</div>'; box.innerHTML=h;
   }
 

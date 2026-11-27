@@ -209,7 +209,10 @@ def create_app(framework: Any, token: str | None = None,
 
     @app.get("/hosts")
     async def hosts() -> dict[str, Any]:
-        return {"hosts": _rows(framework.store.hosts())}
+        rows = _rows(framework.store.hosts())
+        for r in rows:                       # authoritative scope status, for UI flags
+            r["scope"] = framework.scope.classify(str(r.get("host") or ""))
+        return {"hosts": rows}
 
     @app.get("/services")
     async def services() -> dict[str, Any]:

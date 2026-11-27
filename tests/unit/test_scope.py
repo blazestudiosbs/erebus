@@ -81,3 +81,19 @@ def test_show_includes_exclusions():
     sc = Scope(allow=["*.example.com"], deny=["legacy.example.com"])
     shown = sc.show()
     assert "*.example.com" in shown and "!legacy.example.com" in shown
+
+
+def test_classify_matches_the_gate():
+    s = Scope(allow=["*.example.com", "203.0.113.0/24"], deny=["legacy.example.com"])
+    assert s.classify("api.example.com") == "in"
+    assert s.classify("example.com") == "in"          # apex via the wildcard
+    assert s.classify("203.0.113.9") == "in"
+    assert s.classify("legacy.example.com") == "excluded"   # deny beats allow
+    assert s.classify("other.org") == "out"
+    assert s.classify("") == "out"
+
+
+def test_classify_off_when_disabled():
+    s = Scope(allow=["*.example.com"], enabled=False)
+    assert s.classify("anything.org") == "off"
+    assert s.classify("api.example.com") == "off"

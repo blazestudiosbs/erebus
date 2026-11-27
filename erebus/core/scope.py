@@ -118,6 +118,20 @@ class Scope:
             if not self._allowed(t):
                 raise ScopeError(f"target out of scope: {t} (add it with `scope allow {t}`)")
 
+    def classify(self, target: str) -> str:
+        """Scope status of a single target, without raising. One of:
+        ``'off'`` (gate disabled), ``'excluded'`` (hit the deny-list),
+        ``'in'`` (inside the allowlist), or ``'out'`` (neither). Shares the exact
+        matching the gate enforces, so UI labels can't drift from ``check``."""
+        if not self.enabled:
+            return "off"
+        t = target.strip()
+        if not t:
+            return "out"
+        if self._denied(t):
+            return "excluded"
+        return "in" if self._allowed(t) else "out"
+
     def show(self) -> list[str]:
         allow = ([str(n) for n in self._nets]
                  + sorted("*." + w for w in self._wild)
