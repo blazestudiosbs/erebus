@@ -422,7 +422,10 @@ class EreConsole(cmd.Cmd):
               "report <out> | report <archive> <out>]")
 
     def do_scope(self, arg: str) -> None:
-        """scope [show | allow <cidr> | load <file>]."""
+        """scope [show | allow <cidr> | load <file> | import <h1-scope-file>].
+
+        `import` reads a HackerOne scope (structured JSON or a plain list), adds the
+        in-scope network targets, and skips anything out of scope or non-network."""
         parts = shlex.split(arg)
         if not parts or parts[0] == "show":
             rules = self.fw.scope.show()
@@ -439,8 +442,32 @@ class EreConsole(cmd.Cmd):
             self.fw.scope.load(parts[1])
             self.fw.sync_op_scope()
             print("loaded")
+        elif parts[0] == "import" and len(parts) > 1:
+            self._scope_import(parts[1])
         else:
-            print("usage: scope [show | allow <cidr> | load <file>]")
+            print("usage: scope [show | allow <cidr> | load <file> | import <h1-scope-file>]")
+
+    def _scope_import(self, path: str) -> None:
+        """Import a HackerOne scope file: add in-scope network targets, report skips."""
+        from pathlib import Path
+
+        from erebus.lib import h1scope
+        try:
+            text = Path(path).expanduser().read_text()
+        except OSError as exc:
+            print(col(f"  cannot read {path}: {exc}", "error"))
+            return
+        parsed = h1scope.parse(text)
+        for rule in parsed.rules:
+            self.fw.scope.allow(rule)
+        self.fw.sync_op_scope()
+        print(col(f"  imported {len(parsed.rules)} in-scope rule(s)", "good"))
+        for rule in parsed.rules:
+            print(col(f"    + {rule}", "dim"))
+        for ident, reason in parsed.skipped:
+            print(col(f"    - skipped {ident} — {reason}", "warn"))
+        print(col("  review `scope show` against the program policy — and its "
+                  "prohibited-activities list — before running anything", "warn"))
 
     def do_hosts(self, arg: str) -> None:
         """hosts [-a]  — list discovered targets (hides 'down' hosts; -a shows all)."""
