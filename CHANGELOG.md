@@ -5,6 +5,11 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Dashboard Subdomains panel**: a Recon-group web tile that runs the passive
+  multi-source subdomain enum from the browser — domain + optional sources + a resolve
+  toggle, posted to the existing `POST /jobs` endpoint (no new backend). Discovered hosts
+  stream into a live list (and the graph) as the job runs, with the job's status surfaced.
+  Inline JS is syntax-checked in tests via `node --check` (skipped where node is absent).
 - **Console `subdomains <domain> [sources]` shortcut**: one-liner that runs
   `gather/subdomain_enum` without `use`/`set`/`run`, with an optional comma-list of sources
   (e.g. `subdomains example.com crtsh,otx`). Runs on a throwaway module instance so it never

@@ -598,6 +598,20 @@
         <div id="eng-results" style="margin-top:14px"></div>
       </div>
     </div>
+    <div class="view-panel" id="subdomainsview" style="display:none">
+      <div class="notes-wrap">
+        <h2>Subdomain Enum</h2>
+        <p class="psub">Passive multi-source subdomain discovery &mdash; crt.sh, HackerTarget, AlienVault OTX and Anubis, merged and de-duped. Every query hits a public OSINT dataset, never the target. Discovered hosts land in the graph; with an engagement set up, out-of-scope ones are flagged. Leave sources blank for all four.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+          <input id="sub-domain" placeholder="apex domain &mdash; example.com" autocomplete="off" spellcheck="false" style="background:rgba(10,8,18,0.7);border:1px solid #2a2340;border-radius:8px;padding:8px 10px;color:#e6e1ff"/>
+          <input id="sub-sources" placeholder="sources (optional) &mdash; crtsh,otx" autocomplete="off" spellcheck="false" style="background:rgba(10,8,18,0.7);border:1px solid #2a2340;border-radius:8px;padding:8px 10px;color:#e6e1ff"/>
+          <label style="color:#9a92c0;font-size:13px"><input type="checkbox" id="sub-resolve" checked/> resolve (keep live only)</label>
+          <button id="sub-go" onclick="subRun()">Enumerate</button>
+          <span id="sub-status" style="color:#9a92c0;font-size:13px;margin-left:8px"></span>
+        </div>
+        <div id="sub-results" style="margin-top:14px"></div>
+      </div>
+    </div>
     <div class="view-panel" id="notesview" style="display:none">
       <div class="notes-wrap">
         <h2>Notes</h2>
@@ -670,9 +684,9 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Engagement:'engagementview', Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', Remediation:'remediationview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Detections:'detectionsview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Engagement:'engagementview', Subdomains:'subdomainsview', Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', Remediation:'remediationview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Detections:'detectionsview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
-  var GROUPS={ Flow:['Flow'], Recon:['Engagement','Targets','Modules','DNS'], Findings:['Findings','Remediation'], OSINT:['OSINT'],
+  var GROUPS={ Flow:['Flow'], Recon:['Engagement','Subdomains','Targets','Modules','DNS'], Findings:['Findings','Remediation'], OSINT:['OSINT'],
     Access:['Sessions','Pivots','Creds'], Homefield:['Homefield'], Jobs:['Jobs'], Research:['Research'],
     'ATT&CK':['ATT&CK','Detections'], Ops:['Ops'], Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
   var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
@@ -707,6 +721,7 @@
     renderSubnav(name);
     if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
     if(name==='Engagement'){ engInit(); }
+    else if(name==='Subdomains'){ subInit(); }
     else if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
     else if(name==='Modules'){ loadModules(); }
     else if(name==='DNS'){ dnsInit(); }
@@ -794,6 +809,59 @@
     h+='<div style="margin-top:6px;color:#6e6a85;font-size:12px">The program brief/policy supersedes these. Read it, and its prohibited-activities list, before running anything.</div>';
     h+='</div>';
     box.innerHTML=h;
+  }
+
+  // ---- subdomain enum (passive multi-source -> graph) ------------------
+  var subJob=null, subDomain='';
+  function subInit(){ var i=document.getElementById('sub-domain'); if(i) i.focus();
+    if(subDomain) subPoll(); }
+  function subStatus(msg,color){ var s=document.getElementById('sub-status');
+    if(s){ s.textContent=msg||''; s.style.color=color||'#9a92c0'; } }
+  function subRun(){
+    if(!hasTok()){ offlineMsg(subStatus); return; }
+    var domain=((((document.getElementById('sub-domain')||{}).value)||'').trim().toLowerCase()).replace(/^\*\./,'');
+    if(!domain){ subStatus('enter a domain','#ff9d2e'); return; }
+    var sources=(((document.getElementById('sub-sources')||{}).value)||'').replace(/\s+/g,'');
+    var resolve=!!(document.getElementById('sub-resolve')||{}).checked;
+    var opts={DOMAIN:domain, RESOLVE: resolve?'true':'false'};
+    if(sources) opts.SOURCES=sources;
+    subDomain=domain; subStatus('starting…','');
+    document.getElementById('sub-results').innerHTML='';
+    apiPost('jobs',{module:'auxiliary/gather/subdomain_enum',options:opts}).then(function(res){
+      if(!res.ok){ subStatus((res.j&&res.j.detail)||('error '+res.status),'#ff5f6d'); return; }
+      subJob=res.j.job;
+      subStatus('job #'+subJob+' running — '+domain,'#cbb8ff');
+      if(pollTimer){ clearInterval(pollTimer); }
+      pollTimer=setInterval(subPoll,2500); subPoll();
+    });
+  }
+  function subUnderDomain(name){
+    var n=(name||'').toLowerCase();
+    return n===subDomain || (n.length>subDomain.length && n.slice(-(subDomain.length+1))==='.'+subDomain);
+  }
+  function subPoll(){
+    if(subJob!==null){ fetch('jobs',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+      var mine=null; (d.jobs||[]).forEach(function(j){ if(j.id===subJob) mine=j; });
+      if(mine){ var st=String(mine.status||'');
+        if(st==='done'||st==='error'||st==='interrupted'){
+          if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
+          subStatus(st==='done'?('done — job #'+subJob):(st+' — job #'+subJob),
+            st==='done'?'#4ade80':'#ff5f6d'); }
+      } }).catch(function(){}); }
+    fetch('hosts',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+      subRender((d.hosts||[]).filter(function(h){ return subUnderDomain(h.host); })); }).catch(function(){});
+  }
+  function subRender(rows){
+    var box=document.getElementById('sub-results'); if(!box) return;
+    rows.sort(function(a,b){ return (a.host||'').localeCompare(b.host||''); });
+    if(!rows.length){ box.innerHTML='<div style="color:#6e6a85;font-size:13px">'
+      +(subJob!==null?'no subdomains recorded yet — job running…':'enter a domain and hit Enumerate')+'</div>'; return; }
+    var h='<div style="color:#9a92c0;font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">'
+      +'Discovered under '+escHtml(subDomain)+' ('+rows.length+')</div>';
+    h+='<div style="display:flex;flex-direction:column;gap:5px">';
+    rows.forEach(function(r){ h+='<div style="font-family:ui-monospace,monospace;font-size:13px;color:#8fd19e">'
+      +escHtml(r.host||'')+'<span style="color:#6e6a85;margin-left:8px">'+escHtml(r.status||'')+'</span></div>'; });
+    h+='</div>'; box.innerHTML=h;
   }
 
   // ---- operation filter (shared across data tabs) ----------------------
