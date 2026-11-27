@@ -5,6 +5,12 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Scope flags in the dashboard Subdomains list**: each discovered host is now coloured by
+  its authoritative scope status — green **in scope**, amber **out of scope — do not test**,
+  red **excluded — do not test** (deny-list) — with an in/out tally, so out-of-scope hosts
+  can't be mistaken for fair game. Status comes from a new non-raising `Scope.classify()`
+  that shares the gate's exact matching (so a label can never drift from what `check()`
+  enforces), surfaced as a `scope` field on each `GET /hosts` row.
 - **Dashboard Subdomains panel**: a Recon-group web tile that runs the passive
   multi-source subdomain enum from the browser — domain + optional sources + a resolve
   toggle, posted to the existing `POST /jobs` endpoint (no new backend). Discovered hosts

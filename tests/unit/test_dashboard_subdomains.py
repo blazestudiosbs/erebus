@@ -33,6 +33,15 @@ def test_subdomains_panel_is_wired():
     assert "auxiliary/gather/subdomain_enum" in html
 
 
+def test_subdomains_list_colours_by_scope():
+    html = _html()
+    # the list colours each host by the authoritative scope status from /hosts
+    assert "function subScope(" in html
+    assert "do not test" in html
+    for status in ("'in'", "'excluded'", "'out'"):
+        assert status in html
+
+
 def test_dashboard_inline_js_parses():
     node = shutil.which("node")
     if not node:

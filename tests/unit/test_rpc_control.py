@@ -37,6 +37,20 @@ def test_read_endpoints_return_data():
         assert "sessions" in c.get("/sessions").json()
 
 
+def test_hosts_carry_scope_status():
+    fw = Framework()
+    fw.scope.allow("*.caporia.co")
+    fw.scope.deny("legacy.caporia.co")
+    fw.store.add_target("www.caporia.co", status="discovered")
+    fw.store.add_target("legacy.caporia.co", status="discovered")
+    fw.store.add_target("evil.other.org", status="discovered")
+    with _client(fw) as c:
+        by_host = {h["host"]: h.get("scope") for h in c.get("/hosts").json()["hosts"]}
+    assert by_host["www.caporia.co"] == "in"
+    assert by_host["legacy.caporia.co"] == "excluded"     # deny-list wins
+    assert by_host["evil.other.org"] == "out"
+
+
 def test_post_jobs_requires_token():
     with _client(Framework()) as c:
         r = c.post("/jobs", json={"module": "auxiliary/scanner/portscan"})
