@@ -55,6 +55,21 @@ def test_attack_coverage_and_detections_come_from_modules_run() -> None:
     assert "No techniques to derive detections from" not in md
 
 
+def test_reproduction_steps_are_chronological() -> None:
+    fw = Framework()
+    fw.scope.allow("127.0.0.0/8")
+    oid = fw.op_new("order")
+    for ports in ("1", "2"):                       # run oldest -> newest
+        m = fw.use("auxiliary/scanner/portscan")
+        m.set_option("RHOSTS", "127.0.0.1")
+        m.set_option("PORTS", ports)
+        fw.run(m, background=False)
+    steps = op_report._steps(archive.build_op_archive(fw.store, oid))
+    # store returns jobs newest-first; reproduction must read oldest-first
+    assert steps[0].options.get("PORTS") == "1"
+    assert steps[-1].options.get("PORTS") == "2"
+
+
 def test_report_never_contains_secret_values() -> None:
     bundle = _seeded_bundle()
     assert op_report.render_markdown(bundle).find("Hunter2!") == -1

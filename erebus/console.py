@@ -298,7 +298,11 @@ class EreConsole(cmd.Cmd):
                 print("usage: op new <name> [codename]")
                 return
             name = parts[1]
-            codename = " ".join(parts[2:])
+            codename = parts[2] if len(parts) > 2 else ""  # one-word codename
+            if len(parts) > 3:
+                # extra tokens are almost always a multi-line paste that collapsed
+                # onto one line; ignore them rather than absorb them into the codename
+                print(col("  note: ignoring extra text after the codename", "dim"))
             op_id = self.fw.op_new(name, codename=codename)
             label = codename or name
             print(col(f"[+] operation #{op_id} '{label}' opened — "
@@ -437,9 +441,18 @@ class EreConsole(cmd.Cmd):
             print("usage: scope [show | allow <cidr> | load <file>]")
 
     def do_hosts(self, arg: str) -> None:
-        """hosts  — list discovered targets."""
-        for r in self.fw.store.hosts():
+        """hosts [-a]  — list discovered targets (hides 'down' hosts; -a shows all)."""
+        show_all = arg.strip() in ("-a", "--all", "all")
+        rows = self.fw.store.hosts()
+        shown = [r for r in rows if show_all or r["status"] != "down"]
+        if not shown:
+            print(col("  (no hosts)" if show_all else "  (no live hosts — 'hosts -a' "
+                      "to include 'down')", "dim"))
+        for r in shown:
             print(f"  {r['host']:18} {r['status']}")
+        hidden = len(rows) - len(shown)
+        if hidden and not show_all:
+            print(col(f"  … {hidden} 'down' host(s) hidden — 'hosts -a' to show all", "dim"))
 
     def do_services(self, arg: str) -> None:
         """services  — list discovered services."""
@@ -907,4 +920,5 @@ def main(argv: list[str] | None = None) -> None:
     ns = p.parse_args(argv)
     launch(store=ns.store, edition=ns.edition, log=ns.log, journal_dir=ns.journal_dir,
            evidence_dir=ns.evidence_dir, serve=ns.serve, host=ns.host, port=ns.port,
-           token=ns.token)
+           token=ns.token, scope_file=ns.scope, lab=ns.lab,
+           enable_session_exec=ns.enable_session_exec)

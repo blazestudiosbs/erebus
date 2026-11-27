@@ -82,7 +82,8 @@ def _techniques(bundle: dict[str, Any]) -> dict[str, int]:
 
 def _steps(bundle: dict[str, Any]) -> list[rpt.ReproStep]:
     out: list[rpt.ReproStep] = []
-    for j in bundle.get("jobs", []):
+    # jobs come newest-first from the store; reproduction reads oldest-first
+    for j in reversed(bundle.get("jobs", [])):
         key = str(j.get("key") or j.get("module") or "")
         opts = j.get("options")
         if isinstance(opts, str):

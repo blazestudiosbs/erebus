@@ -238,12 +238,19 @@ class Store:
     def add_credential(self, host: str, username: str, secret: str = "",
                        kind: str = "password", service: str = "", port: int = 0,
                        source: str = "") -> int:
-        """Record a discovered credential (deduped on host/port/user/secret)."""
+        """Record a discovered credential (deduped on host/port/user/secret).
+
+        If the same credential already exists but was recorded outside any operation
+        (op_id NULL), re-finding it during an operation tags it to the current one, so
+        it appears in that op's report. An existing op tag is never overwritten.
+        """
         with self._lock:
             cur = self.db.execute(
-                "INSERT OR IGNORE INTO credentials"
+                "INSERT INTO credentials"
                 "(host,port,service,username,secret,kind,source,ts,op_id) "
-                "VALUES(?,?,?,?,?,?,?,?,?)",
+                "VALUES(?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(host,port,username,secret) DO UPDATE SET "
+                "op_id=COALESCE(credentials.op_id, excluded.op_id)",
                 (host, int(port or 0), service, username, secret, kind, source,
                  time.time(), self.current_op_id),
             )
