@@ -55,6 +55,34 @@ def test_post_jobs_runs_scope_allowed_module():
     fw.join()
 
 
+def test_post_jobs_runs_subdomain_enum(monkeypatch):
+    # the dashboard Subdomains button posts this module to /jobs; prove the backend path
+    import json as _json
+
+    import erebus.modules.auxiliary.gather.subdomain_enum as se
+
+    class _T:
+        def __call__(self, url, headers, timeout):
+            if "crt.sh" in url:
+                return 200, _json.dumps([{"name_value": "www.caporia.co"}]).encode()
+            if "hackertarget" in url:
+                return 200, b"api.caporia.co,203.0.113.2"
+            return 404, b""
+
+    monkeypatch.setattr(se, "resolve_ips", lambda h: ["203.0.113.5"])
+    fw = Framework()
+    fw.http_transport = _T()
+    with _client(fw) as c:
+        r = c.post("/jobs", headers=AUTH, json={
+            "module": "auxiliary/gather/subdomain_enum",
+            "options": {"DOMAIN": "caporia.co", "SOURCES": "crtsh,hackertarget"},
+        })
+        assert r.status_code == 200 and "job" in r.json()
+    fw.join()
+    hosts = {h["host"] for h in fw.store.hosts()}
+    assert {"www.caporia.co", "api.caporia.co"} <= hosts
+
+
 def test_post_jobs_blocks_out_of_scope():
     with _client(Framework()) as c:  # deny-all
         r = c.post("/jobs", headers=AUTH, json={
