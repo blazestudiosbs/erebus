@@ -105,4 +105,18 @@ def open_ssh_shell(
         raise SSHLoginError(f"ssh connect failed: {exc}") from exc
 
     channel = client.invoke_shell()
+    _quiet_shell(channel)
     return SSHShellSock(client, channel)
+
+
+def _quiet_shell(channel: Any) -> None:
+    """Quiet an interactive shell channel for programmatic use: disable the PTY's
+    command echo and blank the prompt, so post modules read a command's *output*
+    rather than the echoed command line and a shell prompt. Best-effort and silent
+    if the remote shell lacks ``stty``; the trailing settings never error."""
+    try:
+        channel.sendall(b"stty -echo 2>/dev/null; export PS1='' PS2='' 2>/dev/null\n")
+        channel.settimeout(0.5)
+        channel.recv(4096)          # consume the echo of this setup line + any prompt
+    except OSError:
+        pass

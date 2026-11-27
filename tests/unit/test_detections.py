@@ -142,3 +142,14 @@ def test_console_detections_export(tmp_path, capsys):
     assert out_path.exists()
     assert "purple-team detections" in out_path.read_text()
     assert "wrote" in capsys.readouterr().out
+
+
+def test_t1021_sub_technique_resolves_name_and_data_sources():
+    # a remote-services sub-technique (ssh_login runs T1021.004) must produce a real
+    # detection, not "general telemetry" with the bare id.
+    from erebus.reporting.attack import datasources_of, name_of
+    assert name_of("T1021.004") == "Remote Services"       # inherits the parent's name
+    assert "Authentication Logs" in datasources_of("T1021.004")
+    d = detections_for_techniques({"T1021.004": 1})[0]
+    assert d["data_sources"]                               # not empty
+    assert d["logsource"]["category"] == "authentication"  # watch SSH auth bursts

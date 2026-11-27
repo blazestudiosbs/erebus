@@ -58,6 +58,13 @@ def test_sshshellsock_delegates_to_channel():
     assert s.fileno() == 7
 
 
+def test_quiet_shell_disables_echo():
+    from erebus.lib.sshsession import _quiet_shell
+    chan = _FakeChan()
+    _quiet_shell(chan)
+    assert any(b"stty -echo" in d for d in chan.sent)   # echo disabled on the PTY
+
+
 def test_sshshellsock_close_tears_down_channel_and_client():
     chan, cli = _FakeChan(), _FakeClient()
     SSHShellSock(cli, chan).close()

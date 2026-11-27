@@ -133,6 +133,19 @@ class Framework:
         """The active operation row, or None when no operation is open."""
         return self.store.current_operation()
 
+    def sync_op_scope(self) -> None:
+        """Refresh the current operation's recorded scope to the live scope.
+
+        Called when the scope changes, so a report shows the scope actually in
+        effect — an operation often auto-opens before any scope is loaded, which
+        would otherwise leave its snapshot empty."""
+        import json as _json
+
+        current = self.store.current_operation()
+        if current is not None:
+            self.store.update_operation_scope(
+                int(current["id"]), _json.dumps(list(self.scope.show())))
+
     def op_log_artifact(self, kind: str, descr: str, revert_hint: str = "") -> int:
         """Record something the current op created (a test account, a dropped
         file) so teardown lists it. Raises if no operation is open."""

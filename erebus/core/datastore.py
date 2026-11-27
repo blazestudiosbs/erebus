@@ -293,6 +293,14 @@ class Store:
         self.set_current_op(op_id)
         return op_id
 
+    def update_operation_scope(self, op_id: int, scope: str) -> None:
+        """Update an operation's recorded scope (e.g. after the scope changes while
+        the op is open, so a report reflects the scope actually in effect)."""
+        with self._lock:
+            self.db.execute("UPDATE operations SET scope=? WHERE id=?",
+                            (scope, int(op_id)))
+            self.db.commit()
+
     def end_operation(self, op_id: int, status: str = "ended") -> None:
         """Close an operation; if it was current, clear the current-op pointer."""
         with self._lock:
