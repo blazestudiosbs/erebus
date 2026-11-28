@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -29,7 +30,9 @@ class OptionSpec:
     def validate(self, value: str) -> Any:
         k = self.kind
         try:
-            if k in ("string", "url", "file"):
+            if k == "file":                   # expand ~ and $VARS so paths just work
+                return os.path.expanduser(os.path.expandvars(str(value)))
+            if k in ("string", "url"):
                 return str(value)
             if k == "int":
                 return int(value)
