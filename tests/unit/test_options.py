@@ -28,6 +28,16 @@ def test_cidr_still_rejects_garbage():
             c.validate(bad)
 
 
+def test_file_kind_expands_tilde_and_vars(monkeypatch):
+    import os
+
+    home = os.path.expanduser("~")
+    assert OptionSpec("F", kind="file").validate("~/Downloads/x.har") == f"{home}/Downloads/x.har"
+    monkeypatch.setenv("EREBUS_TMP", "/tmp/erebus")
+    assert OptionSpec("F", kind="file").validate("$EREBUS_TMP/y.har") == "/tmp/erebus/y.har"
+    assert OptionSpec("F", kind="file").validate("/abs/path.har") == "/abs/path.har"
+
+
 def test_kinds_reject():
     with pytest.raises(OptionError):
         OptionSpec("P", kind="port").validate("70000")

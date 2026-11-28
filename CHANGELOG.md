@@ -4,6 +4,12 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Fixed
+- **File-path options didn't expand `~`** — `set HARFILE ~/Downloads/x.har` (and any other
+  `file` option) failed with "No such file or directory: '~/Downloads/x.har'", because the
+  tilde was passed to `open()` literally. The `file` option kind now expands `~` and
+  `$VARS`, so a path with a home-relative or env-var prefix just works.
+
 ### Added
 - **Browser HAR import (`import/har`)**: a CDN/WAF-fronted app only answers your real,
   logged-in browser, so the richest recon (the API the app actually calls) happens in
