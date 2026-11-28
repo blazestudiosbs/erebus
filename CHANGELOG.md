@@ -4,6 +4,18 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Added
+- **Unattended recon pipeline (`autorecon`)**: start it before work, come home to a mapped
+  target with notes and findings. It runs the whole chain over **every in-scope host** in a
+  background thread — subdomain enum on each in-scope apex → a throttled fingerprint of each
+  host (http_probe, tls_scan, http_headers, web_content) → service→CVE correlation (vulnmap,
+  offline) — appends an auto-recon summary to the engagement notes, and stops cleanly when
+  you run `autorecon stop`, when it has covered every in-scope host, or if a phase errors.
+  Safe to leave running on a live target: scope-bounded (every host is gate-checked before
+  it's touched), throttled (2 threads + a per-host delay), and it never raises out of the
+  worker. `autorecon status` shows progress; `autorecon <domains…>` overrides the scope
+  apexes; `deep` additionally runs nuclei (active, rate-limited) — opt-in per run.
+
 ### Fixed
 - **Datastore "disk I/O error" under load**: the store shares one SQLite connection across
   threads (`check_same_thread=False`) and locked its writes but not its reads — so when the
