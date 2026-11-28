@@ -612,6 +612,19 @@
         <div id="sub-results" style="margin-top:14px"></div>
       </div>
     </div>
+    <div class="view-panel" id="reconview" style="display:none">
+      <div class="notes-wrap">
+        <h2>Recon Sweep</h2>
+        <p class="psub">One command for the whole first pass: passive multi-source subdomain enum (all six sources) &rarr; resolve &rarr; scope-flag. Tick <b>active fingerprint</b> to also run a throttled http_probe + tls_scan of the <b>in-scope</b> live hosts. Results land in the graph and Targets. Set up an engagement first so hosts are scope-checked; the fingerprint pass only ever touches in-scope hosts.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+          <input id="sweep-domain" placeholder="apex domain &mdash; example.com" autocomplete="off" spellcheck="false" style="background:rgba(10,8,18,0.7);border:1px solid #2a2340;border-radius:8px;padding:8px 10px;color:#e6e1ff"/>
+          <label style="color:#9a92c0;font-size:13px"><input type="checkbox" id="sweep-probe"/> active fingerprint (slower)</label>
+          <button id="sweep-go">Run sweep</button>
+          <span id="sweep-status" style="color:#9a92c0;font-size:13px;margin-left:8px"></span>
+        </div>
+        <pre id="sweep-out" style="margin-top:4px;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,monospace;font-size:12px;color:#cfc6ef;background:rgba(10,8,18,0.5);border:1px solid #2a2340;border-radius:10px;padding:12px 14px;min-height:40px"></pre>
+      </div>
+    </div>
     <div class="view-panel" id="notesview" style="display:none">
       <div class="notes-wrap">
         <h2>Notes</h2>
@@ -684,9 +697,9 @@
   document.getElementById('t-ach').onclick=function(){setTheme('ach');};
 
   // ---- nav tabs + view switching --------------------------------------
-  var PANELS={Engagement:'engagementview', Subdomains:'subdomainsview', Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', Remediation:'remediationview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Detections:'detectionsview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
+  var PANELS={Engagement:'engagementview', Subdomains:'subdomainsview', Sweep:'reconview', Targets:'targetsview', Modules:'modulesview', DNS:'dnsview', Homefield:'homefieldview', Guide:'guideview', Findings:'findingsview', Remediation:'remediationview', OSINT:'osintview', Jobs:'jobsview', Sessions:'sessionsview', Pivots:'pivotsview', Creds:'credsview', Research:'researchview', 'ATT&CK':'attackview', Detections:'detectionsview', Ops:'opsview', Reports:'reportsview', Notes:'notesview', Terminal:'terminalview'};
   // consolidated top tabs -> member views (sub-nav shown when a group has >1).
-  var GROUPS={ Flow:['Flow'], Recon:['Engagement','Subdomains','Targets','Modules','DNS'], Findings:['Findings','Remediation'], OSINT:['OSINT'],
+  var GROUPS={ Flow:['Flow'], Recon:['Engagement','Subdomains','Sweep','Targets','Modules','DNS'], Findings:['Findings','Remediation'], OSINT:['OSINT'],
     Access:['Sessions','Pivots','Creds'], Homefield:['Homefield'], Jobs:['Jobs'], Research:['Research'],
     'ATT&CK':['ATT&CK','Detections'], Ops:['Ops'], Report:['Reports','Notes'], Guide:['Guide'], Console:['Terminal'] };
   var MEMBER_LABEL={ Targets:'Scope & Run', Modules:'Modules', DNS:'DNS', Sessions:'Sessions', Pivots:'Pivots',
@@ -722,6 +735,7 @@
     if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
     if(name==='Engagement'){ engInit(); }
     else if(name==='Subdomains'){ subInit(); }
+    else if(name==='Sweep'){ sweepInit(); }
     else if(name==='Targets'){ loadScope(); var inp=document.getElementById('tgt-input'); if(inp) inp.focus(); }
     else if(name==='Modules'){ loadModules(); }
     else if(name==='DNS'){ dnsInit(); }
@@ -882,6 +896,28 @@
         +(sc.tag?('<span style="color:'+sc.col+';margin-left:8px;font-size:11px;text-transform:uppercase;letter-spacing:.5px">'+sc.tag+'</span>'):'')
         +'</div>'; });
     h+='</div>'; box.innerHTML=h;
+  }
+
+  // ---- recon sweep (one command: enum [+ throttled fingerprint]) --------
+  function sweepInit(){ var i=document.getElementById('sweep-domain'); if(i) i.focus();
+    var go=document.getElementById('sweep-go');   // wire here: inline onclick can't see IIFE scope
+    if(go && !go._wired){ go._wired=true; go.onclick=sweepRun; } }
+  function sweepStatus(msg,color){ var s=document.getElementById('sweep-status');
+    if(s){ s.textContent=msg||''; s.style.color=color||'#9a92c0'; } }
+  function sweepRun(){
+    if(!hasTok()){ offlineMsg(sweepStatus); return; }
+    var domain=((((document.getElementById('sweep-domain')||{}).value)||'').trim().toLowerCase()).replace(/^\*\./,'');
+    if(!domain){ sweepStatus('enter a domain','#ff9d2e'); return; }
+    var probe=!!(document.getElementById('sweep-probe')||{}).checked;
+    var cmd='recon '+domain+(probe?' probe':'');
+    var out=document.getElementById('sweep-out'); if(out) out.textContent='';
+    sweepStatus(probe?'running sweep + fingerprint — this can take a bit…':'running sweep…','#cbb8ff');
+    apiPost('console',{command:cmd}).then(function(res){
+      if(!res.ok){ sweepStatus((res.j&&res.j.detail)||('error '+res.status),'#ff5f6d'); return; }
+      if(out) out.textContent=(res.j&&res.j.output)||'(no output)';
+      sweepStatus('done — '+domain,'#4ade80');
+      if(typeof refetchGraph==='function') refetchGraph();   // pull the new hosts into the graph
+    }).catch(function(){ sweepStatus('request failed','#ff5f6d'); });
   }
 
   // ---- operation filter (shared across data tabs) ----------------------

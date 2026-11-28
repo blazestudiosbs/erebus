@@ -45,6 +45,18 @@ def test_subdomains_list_colours_by_scope():
         assert status in html
 
 
+def test_recon_sweep_panel_is_wired():
+    html = _html()
+    assert 'id="reconview"' in html and 'id="sweep-domain"' in html
+    assert "function sweepRun(" in html and "go.onclick=sweepRun" in html
+    assert "Sweep:'reconview'" in html
+    assert re.search(r"Recon:\[[^\]]*'Subdomains','Sweep'", html)
+    assert "name==='Sweep'" in html and "sweepInit()" in html
+    # it drives the whole multi-module command through the /console endpoint
+    assert "'recon '+domain" in html
+    assert "apiPost('console'" in html
+
+
 def test_no_inline_onclick_handlers():
     # the dashboard script is one big IIFE, so its functions are NOT global; a button
     # with inline onclick="fn()" throws "fn is not defined" at click time. Every button
