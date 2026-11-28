@@ -4,6 +4,14 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Added
+- **Scope gate restored on restart**: the current operation already persists its scope
+  snapshot across restarts, but the in-memory gate started empty — so after restarting
+  `ereconsole --serve` you had to re-import the scope or active modules were silently
+  deny-all'd. The framework now re-arms the live gate from the current op's snapshot at
+  startup, so a server restart keeps its guardrails with no re-import. No-op when there's
+  no current op; it only adds the op's rules, never overriding scope you loaded yourself.
+
 ### Fixed
 - **Scanner `RHOSTS` rejected hostnames** (`invalid cidr: 'portal.arc.io'`). The web
   scanners (`http_probe`, `http_headers`, `tls_scan`, `web_content`) and `portscan` all

@@ -606,3 +606,38 @@ def test_dashboard_serves_operations_tab() -> None:
     assert "Ops:'opsview'" in html         # PANELS wiring
     assert "function opsInit(" in html     # the loader
     assert "operations/teardown" in html   # drives the teardown endpoints
+
+
+def test_scope_gate_restored_from_current_op_on_restart(tmp_path):
+    """A server restart drops the in-memory Scope(), but the current op persists its
+    snapshot — the new Framework must re-arm the gate from it."""
+    from erebus.core.scope import ScopeError
+
+    db = str(tmp_path / "engage.db")
+    fw = Framework(store_path=db)
+    fw.op_new("arc", codename="HackerOne")        # snapshots empty, like the real flow
+    fw.scope.allow("*.arc.io")
+    fw.scope.allow("rpc.testnet.arc.network")
+    fw.scope.deny("community.arc.io")
+    fw.sync_op_scope()                            # record the live scope on the op
+
+    # a fresh process on the same store (the restart)
+    fw2 = Framework(store_path=db)
+    assert fw2.current_op() is not None           # op still current
+    fw2.scope.check(["api.arc.io"])               # restored allow (wildcard)
+    fw2.scope.check(["rpc.testnet.arc.network"])  # restored exact host
+    with pytest.raises(ScopeError):
+        fw2.scope.check(["community.arc.io"])     # restored deny carve-out
+    with pytest.raises(ScopeError):
+        fw2.scope.check(["example.org"])          # still out of scope
+
+
+def test_no_current_op_leaves_gate_empty(tmp_path):
+    # nothing to restore -> deny-all default (unchanged behaviour)
+    from erebus.core.scope import ScopeError
+
+    fw = Framework(store_path=str(tmp_path / "empty.db"))
+    fw.op_end()                                   # close the... (there is none) -> no-op
+    fw2 = Framework(store_path=str(tmp_path / "empty.db"))
+    with pytest.raises(ScopeError):
+        fw2.scope.check(["anything.com"])

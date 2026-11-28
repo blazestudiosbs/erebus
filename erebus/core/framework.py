@@ -80,6 +80,9 @@ class Framework:
             self.activity_log = ActivityLog(log_path)
             self.activity_log.attach(self.events)
         self.loader.discover()
+        # re-arm the gate from the current op's scope snapshot, so a restart with a
+        # persistent store keeps its guardrails (the op persists; Scope() starts empty)
+        self._restore_op_scope()
 
     # --- connections -------------------------------------------------------
     def dial(self, host: str, port: int, timeout: float = 3.0) -> socket.socket:
@@ -132,6 +135,30 @@ class Framework:
     def current_op(self) -> Any:
         """The active operation row, or None when no operation is open."""
         return self.store.current_operation()
+
+    def _restore_op_scope(self) -> None:
+        """On startup, re-arm the live scope gate from the current operation's recorded
+        snapshot. The operation persists across restarts but the in-memory ``Scope()``
+        starts empty, so without this a server restart silently drops the guardrails
+        (deny-all) even though the engagement is still open. No-op when there is no
+        current op or its snapshot is empty/unreadable, and it never overrides scope the
+        caller already loaded (it only adds the op's rules)."""
+        import json as _json
+
+        current = self.store.current_operation()
+        if current is None:
+            return
+        raw = current["scope"]
+        if not raw:
+            return
+        try:
+            rules = _json.loads(raw)
+        except (ValueError, TypeError):
+            return
+        if not isinstance(rules, list):
+            return
+        for rule in rules:                       # show() emits "!x" for denies; allow() routes them
+            self.scope.allow(str(rule))
 
     def sync_op_scope(self) -> None:
         """Refresh the current operation's recorded scope to the live scope.
