@@ -310,6 +310,64 @@ class EreConsole(cmd.Cmd):
         except ScopeError:
             return False
 
+    def _scope_apex_domains(self) -> list[str]:
+        """Apex domains to enumerate, from the scope's ``*.`` wildcard rules."""
+        out: list[str] = []
+        for rule in self.fw.scope.show():
+            if rule.startswith("*."):
+                base = rule[2:].strip().lower()
+                if base and base not in out:
+                    out.append(base)
+        return out
+
+    def do_autorecon(self, arg: str) -> None:
+        """autorecon [<domains…>] [deep] | autorecon stop | autorecon status
+        Unattended recon over every in-scope host: subdomain enum (all apexes) → throttled
+        fingerprint → service→CVE correlation. Add 'deep' to also run nuclei (active).
+        Runs in the background, scope-bounded; stop it any time with 'autorecon stop'.
+        With no domains it uses the engagement scope's ``*.`` apexes."""
+        from erebus.lib.autorecon import AutoRecon
+        parts = arg.split()
+        head = parts[0].lower() if parts else ""
+        ar = getattr(self, "_autorecon", None)
+
+        if head == "stop":
+            if ar and ar.status()["state"] == "running":
+                ar.stop()
+                print(col("[*] autorecon: stopping after the current step…", "warn"))
+            else:
+                print("no autorecon is running")
+            return
+        if head == "status":
+            if not ar:
+                print("autorecon: idle (not started)")
+                return
+            s = ar.status()
+            print(col(f"[auto] {s['state']} · {s['phase'] or '—'} · "
+                      f"{s['done_hosts']}/{s['total_hosts']} host(s) · {s['elapsed']}s"
+                      + (" · deep" if s['deep'] else ""), "info"))
+            return
+
+        if ar and ar.status()["state"] == "running":
+            print(col("autorecon already running (autorecon status | autorecon stop)", "warn"))
+            return
+        tokens = parts[1:] if head == "start" else parts
+        deep = any(t.lower() == "deep" for t in tokens)
+        domains = [t for t in tokens if t.lower() != "deep"]
+        if not domains:
+            domains = self._scope_apex_domains()
+        if not domains:
+            print(col("no domains — pass them (autorecon example.com) or set up an "
+                      "engagement first", "error"))
+            return
+        ar = AutoRecon(self.fw, domains, deep=deep, delay=0.5,
+                       on_log=lambda m: print(col(m, "dim")))
+        self._autorecon = ar
+        ar.start()
+        print(col(f"[+] autorecon started: {', '.join(domains)}"
+                  + (" (deep/nuclei)" if deep else "")
+                  + " — background; 'autorecon status' / 'autorecon stop'", "good"))
+
     def _notes_text(self) -> str:
         """The engagement notes file's content, if any (same path the RPC uses)."""
         env = os.environ.get("EREBUS_NOTES")
