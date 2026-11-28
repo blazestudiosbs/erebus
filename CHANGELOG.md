@@ -5,6 +5,15 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Browser HAR import (`import/har`)**: a CDN/WAF-fronted app only answers your real,
+  logged-in browser, so the richest recon (the API the app actually calls) happens in
+  DevTools — invisible to the op report. This pulls it back in: export the Network tab as a
+  HAR and Erebus records the **in-scope** hosts as targets, their web services, and the
+  de-duplicated endpoints (method + path) the app hit, as an op finding per host. Scope-aware
+  (a HAR is full of third-party calls — analytics, CDNs, fonts — so only in-scope hosts are
+  recorded, the rest flagged and skipped) and **secret-safe** (stores only method, host,
+  path, query-parameter *names*, status and content-type — never header values, cookies,
+  tokens, query values or bodies). Offline, stdlib only.
 - **Scope gate restored on restart**: the current operation already persists its scope
   snapshot across restarts, but the in-memory gate started empty — so after restarting
   `ereconsole --serve` you had to re-import the scope or active modules were silently
