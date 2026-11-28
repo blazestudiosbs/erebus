@@ -4,6 +4,14 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Fixed
+- **Datastore "disk I/O error" under load**: the store shares one SQLite connection across
+  threads (`check_same_thread=False`) and locked its writes but not its reads — so when the
+  dashboard polled `/hosts` / `/findings` while a background job (e.g. a big subdomain enum)
+  was committing, the two raced on the connection and SQLite raised "disk I/O error". All
+  reads now take the store lock (via `_all`/`_one` helpers), and the lock is an `RLock` so a
+  locked write can still call a locked read. A concurrency test hammers reads against writes.
+
 ### Added
 - **Dashboard Recon Sweep panel**: the web button for `recon` — a Recon-group tile with a
   domain field and an "active fingerprint" toggle that runs the whole sweep (via the
