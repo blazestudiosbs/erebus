@@ -5,6 +5,13 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Fixed
+- **Scanner `RHOSTS` rejected hostnames** (`invalid cidr: 'portal.arc.io'`). The web
+  scanners (`http_probe`, `http_headers`, `tls_scan`, `web_content`) and `portscan` all
+  document `RHOSTS` as "ip / cidr / host" and resolve hostnames via `expand_hosts`, but the
+  `cidr` option kind only accepted an IP/CIDR — so you couldn't probe a hostname at all,
+  which is exactly what you need for a CDN-fronted target (an IP would break vhost routing).
+  The `cidr` kind now also accepts a valid hostname (still rejecting garbage, URLs and
+  wildcards).
 - **Dashboard "Set up engagement" and "Enumerate" buttons did nothing** (threw
   `engSetup is not defined` / `subRun is not defined` in the browser console). The whole
   dashboard script is one IIFE, so its functions aren't global, but these two buttons used

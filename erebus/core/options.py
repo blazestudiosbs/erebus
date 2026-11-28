@@ -2,8 +2,15 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 from dataclasses import dataclass
 from typing import Any
+
+# A plausible DNS hostname (labels of letters/digits/-/_, dot-separated, <=253 chars).
+# RHOSTS is documented as "ip / cidr / host" and every consumer resolves hostnames, so
+# the cidr kind accepts one of these too (e.g. a Cloudflare-fronted bug-bounty target).
+_HOSTNAME_RE = re.compile(
+    r"^(?=.{1,253}$)(?!-)[A-Za-z0-9_-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9_-]{1,63}(?<!-))*$")
 
 
 class OptionError(ValueError):
@@ -37,9 +44,14 @@ class OptionSpec:
                 raise ValueError
             if k == "ip":
                 return str(ipaddress.ip_address(value))
-            if k == "cidr":
-                ipaddress.ip_network(value, strict=False)  # validate only
-                return str(value)
+            if k == "cidr":                       # an IP, a CIDR, or a hostname target
+                s = str(value).strip()
+                try:
+                    ipaddress.ip_network(s, strict=False)  # ip / cidr
+                except ValueError:
+                    if not _HOSTNAME_RE.match(s):   # else a resolvable hostname
+                        raise
+                return s
             if k == "port":
                 p = int(value)
                 if not 0 < p < 65536:
