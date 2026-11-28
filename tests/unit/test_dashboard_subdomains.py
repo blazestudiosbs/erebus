@@ -22,8 +22,11 @@ def test_subdomains_panel_is_wired():
     # the panel, its controls, and the function the button calls
     assert 'id="subdomainsview"' in html
     assert 'id="sub-domain"' in html and 'id="sub-resolve"' in html
-    assert 'onclick="subRun()"' in html
     assert "function subRun(" in html and "function subRender(" in html
+    # the Enumerate button is wired via .onclick inside the IIFE, not inline onclick
+    # (inline onclick can't see the script's IIFE-scoped functions — see the regression
+    # test below)
+    assert "go.onclick=subRun" in html
     # registered as a view and grouped under Recon, right after Engagement
     assert "Subdomains:'subdomainsview'" in html
     assert re.search(r"Recon:\[[^\]]*'Engagement','Subdomains'", html)
@@ -40,6 +43,16 @@ def test_subdomains_list_colours_by_scope():
     assert "do not test" in html
     for status in ("'in'", "'excluded'", "'out'"):
         assert status in html
+
+
+def test_no_inline_onclick_handlers():
+    # the dashboard script is one big IIFE, so its functions are NOT global; a button
+    # with inline onclick="fn()" throws "fn is not defined" at click time. Every button
+    # must be wired via addEventListener/.onclick inside the IIFE instead. This guards
+    # the engagement + subdomains panels (both regressed on this) from recurring.
+    html = _html()
+    assert 'onclick="' not in html, "inline onclick can't reach IIFE-scoped functions"
+    assert "go.onclick=engSetup" in html and "go.onclick=subRun" in html
 
 
 def test_dashboard_inline_js_parses():
