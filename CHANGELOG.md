@@ -5,6 +5,10 @@ this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 ### Added
+- **Dashboard Recon Sweep panel**: the web button for `recon` — a Recon-group tile with a
+  domain field and an "active fingerprint" toggle that runs the whole sweep (via the
+  `/console` endpoint) and shows its output, with results flowing into the graph and
+  Targets. Passive by default; the fingerprint pass stays in-scope-only as on the console.
 - **One-command recon sweep (`recon <domain> [probe]`)**: chains the recon you'd otherwise
   run by hand — passive multi-source subdomain enum (all six sources) → resolve + scope-flag.
   Add `probe` to also run a **throttled** `http_probe` + `tls_scan` fingerprint of the
