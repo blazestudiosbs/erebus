@@ -99,3 +99,29 @@ def test_do_subdomains_usage_on_empty(capsys) -> None:
     out = capsys.readouterr().out
     assert "usage: subdomains" in out
     assert not con.fw.store.hosts()    # nothing ran
+
+
+def test_do_recon_passive_records_hosts(monkeypatch) -> None:
+    monkeypatch.setattr(se, "resolve_ips", lambda h: ["203.0.113.5"])
+    fw = Framework()
+    _wire_subdomains(fw)
+    fw.scope.enabled = True
+    fw.scope.allow("*.caporia.co")
+    con = EreConsole(framework=fw, banner=False)
+    con.do_recon("caporia.co")                 # passive: enum only, no network probe
+    hosts = {dict(h)["host"] for h in fw.store.hosts()}
+    assert {"www.caporia.co", "api.caporia.co"} <= hosts
+
+
+def test_do_recon_usage_on_empty(capsys) -> None:
+    con = EreConsole(framework=Framework(), banner=False)
+    con.do_recon("")
+    assert "usage: recon" in capsys.readouterr().out
+
+
+def test_do_recon_probe_offline_touches_no_network() -> None:
+    # offline -> enum records nothing -> the probe pass has no in-scope hosts -> no sockets
+    fw = Framework(offline=True)
+    con = EreConsole(framework=fw, banner=False)
+    con.do_recon("caporia.co probe")           # must not raise, must not hit the network
+    assert not fw.store.hosts()
