@@ -4,6 +4,13 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Added
+- **One-command recon sweep (`recon <domain> [probe]`)**: chains the recon you'd otherwise
+  run by hand — passive multi-source subdomain enum (all six sources) → resolve + scope-flag.
+  Add `probe` to also run a **throttled** `http_probe` + `tls_scan` fingerprint of the
+  **in-scope** live hosts (active, opt-in, 2 threads, https/80, capped at 50 hosts). Passive
+  by default; the probe pass only ever touches hosts the gate allows.
+
 ### Fixed
 - **File-path options didn't expand `~`** — `set HARFILE ~/Downloads/x.har` (and any other
   `file` option) failed with "No such file or directory: '~/Downloads/x.har'", because the

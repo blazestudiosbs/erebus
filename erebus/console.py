@@ -238,6 +238,78 @@ class EreConsole(cmd.Cmd):
             print(col(str(e), "error"))
         self._status()
 
+    def _run_module(self, key: str, **opts: str) -> bool:
+        """use/set/run a module in one shot (scope-gated). True if it ran."""
+        try:
+            m = self.fw.use(key)
+            for k, v in opts.items():
+                m.set_option(k, v)
+            self.fw.run(m, background=True)
+            self.fw.join()
+            return True
+        except KeyError as e:
+            print(col(str(e), "error"))
+        except (OptionError, ScopeError) as e:
+            print(col(f"  {key}: {e}", "warn"))
+        return False
+
+    _RECON_PROBE_CAP = 50
+
+    def do_recon(self, arg: str) -> None:
+        """recon <domain> [probe]  — one-shot recon sweep. Passive multi-source subdomain
+        enum (all sources) → resolve + scope-flag. Add 'probe' to also run a throttled
+        http_probe + tls_scan fingerprint of the IN-SCOPE live hosts (active, opt-in)."""
+        parts = arg.split()
+        if not parts:
+            print("usage: recon <domain> [probe]   (add 'probe' for a throttled active "
+                  "fingerprint of in-scope hosts)")
+            return
+        domain = parts[0].strip().lower().lstrip("*.").strip(".")
+        do_probe = any(p.lower() in ("probe", "active", "fingerprint") for p in parts[1:])
+
+        print(col(f"[*] recon {domain}: passive subdomain enum (all sources)…", "accent"))
+        if not self._run_module("auxiliary/gather/subdomain_enum", DOMAIN=domain):
+            return
+
+        base = "." + domain
+        hosts = sorted({
+            h["host"] for h in self.fw.store.hosts()
+            if (h["host"] == domain or h["host"].endswith(base)) and self._recon_in_scope(h["host"])
+        })
+        print(col(f"[*] {len(hosts)} in-scope host(s) under {domain}", "info"))
+        if not do_probe:
+            print(col("    (passive only — add 'probe' to fingerprint them)", "dim"))
+            self._status()
+            return
+        if not hosts:
+            self._status()
+            return
+
+        targets = hosts[: self._RECON_PROBE_CAP]
+        if len(hosts) > self._RECON_PROBE_CAP:
+            print(col(f"[!] probing the first {self._RECON_PROBE_CAP}; re-run targeted for "
+                      f"the other {len(hosts) - self._RECON_PROBE_CAP}", "warn"))
+        print(col(f"[*] fingerprinting {len(targets)} in-scope host(s) — throttled, "
+                  "https…", "accent"))
+        for name in targets:
+            self._run_module("auxiliary/scanner/http_probe", RHOSTS=name, PORTS="443,80",
+                             THREADS="2")
+            self._run_module("auxiliary/scanner/tls_scan", RHOSTS=name, THREADS="2")
+        print(col(f"[+] recon sweep complete for {domain}", "good"))
+        self._status()
+
+    def _recon_in_scope(self, host: str) -> bool:
+        """True when the gate would allow this host (so the probe pass never touches an
+        out-of-scope one). 'off' (gate disabled) counts as in-scope."""
+        classify = getattr(self.fw.scope, "classify", None)
+        if callable(classify):
+            return str(classify(host)) in ("in", "off")
+        try:
+            self.fw.scope.check([host])
+            return True
+        except ScopeError:
+            return False
+
     def _notes_text(self) -> str:
         """The engagement notes file's content, if any (same path the RPC uses)."""
         env = os.environ.get("EREBUS_NOTES")
