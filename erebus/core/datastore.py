@@ -64,7 +64,7 @@ class Store:
     def __init__(self, path: str = ":memory:") -> None:
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()   # re-entrant: a locked write may call a locked read
         # The engagement whose id is stamped onto new rows; None = untagged.
         # Loaded from settings so a "current op" survives a restart.
         self.current_op_id: int | None = None
@@ -140,14 +140,26 @@ class Store:
             )
             self.db.commit()
 
+    def _all(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
+        """A locked SELECT. The one connection is shared with writer threads
+        (check_same_thread=False), so a read must hold the same lock as writes or
+        SQLite raises 'disk I/O error' when a poll races a background job's commit."""
+        with self._lock:
+            return self.db.execute(sql, params).fetchall()
+
+    def _one(self, sql: str, params: tuple = ()) -> sqlite3.Row | None:
+        """A locked single-row SELECT (see ``_all``)."""
+        with self._lock:
+            return self.db.execute(sql, params).fetchone()
+
     def hosts(self) -> list[sqlite3.Row]:
-        return self.db.execute("SELECT * FROM targets ORDER BY host").fetchall()
+        return self._all("SELECT * FROM targets ORDER BY host")
 
     def services(self) -> list[sqlite3.Row]:
-        return self.db.execute("SELECT * FROM services ORDER BY host, port").fetchall()
+        return self._all("SELECT * FROM services ORDER BY host, port")
 
     def findings(self) -> list[sqlite3.Row]:
-        return self.db.execute("SELECT * FROM findings ORDER BY ts").fetchall()
+        return self._all("SELECT * FROM findings ORDER BY ts")
 
     def add_session(self, host: str, kind: str = "shell", transport: str = "tcp") -> int:
         with self._lock:
@@ -178,17 +190,16 @@ class Store:
             return int(cur.lastrowid or 0)
 
     def evidence(self) -> list[sqlite3.Row]:
-        return self.db.execute("SELECT * FROM evidence ORDER BY id").fetchall()
+        return self._all("SELECT * FROM evidence ORDER BY id")
 
     def event_rows(self) -> list[sqlite3.Row]:
         """The append-only event log, oldest first."""
-        return self.db.execute("SELECT * FROM events ORDER BY ts, rowid").fetchall()
+        return self._all("SELECT * FROM events ORDER BY ts, rowid")
 
     def recent_events(self, limit: int = 200) -> list[sqlite3.Row]:
         """The most recent events, returned oldest-first for replay on reconnect."""
-        rows = self.db.execute(
-            "SELECT * FROM events ORDER BY ts DESC, rowid DESC LIMIT ?", (int(limit),)
-        ).fetchall()
+        rows = self._all(
+            "SELECT * FROM events ORDER BY ts DESC, rowid DESC LIMIT ?", (int(limit),))
         return list(reversed(rows))
 
     # -- jobs ---------------------------------------------------------------
@@ -221,7 +232,7 @@ class Store:
 
     def jobs(self) -> list[sqlite3.Row]:
         """All jobs, most recent first."""
-        return self.db.execute("SELECT * FROM jobs ORDER BY id DESC").fetchall()
+        return self._all("SELECT * FROM jobs ORDER BY id DESC")
 
     def mark_running_interrupted(self) -> int:
         """On startup, any job left 'queued'/'running' from a prior process is stale."""
@@ -258,13 +269,11 @@ class Store:
             return int(cur.lastrowid or 0)
 
     def credentials(self) -> list[sqlite3.Row]:
-        return self.db.execute("SELECT * FROM credentials ORDER BY id").fetchall()
+        return self._all("SELECT * FROM credentials ORDER BY id")
 
     # -- settings (small key/value store) -----------------------------------
     def get_setting(self, key: str) -> str | None:
-        row = self.db.execute(
-            "SELECT value FROM settings WHERE key=?", (key,)
-        ).fetchone()
+        row = self._one("SELECT value FROM settings WHERE key=?", (key,))
         return str(row["value"]) if row is not None else None
 
     def set_setting(self, key: str, value: str | None) -> None:
@@ -320,20 +329,14 @@ class Store:
     def current_operation(self) -> sqlite3.Row | None:
         if self.current_op_id is None:
             return None
-        return self.db.execute(
-            "SELECT * FROM operations WHERE id=?", (self.current_op_id,)
-        ).fetchone()
+        return self._one("SELECT * FROM operations WHERE id=?", (self.current_op_id,))
 
     def operations(self) -> list[sqlite3.Row]:
         """All operations, most recent first."""
-        return self.db.execute(
-            "SELECT * FROM operations ORDER BY id DESC"
-        ).fetchall()
+        return self._all("SELECT * FROM operations ORDER BY id DESC")
 
     def operation(self, op_id: int) -> sqlite3.Row | None:
-        return self.db.execute(
-            "SELECT * FROM operations WHERE id=?", (int(op_id),)
-        ).fetchone()
+        return self._one("SELECT * FROM operations WHERE id=?", (int(op_id),))
 
     # -- op artifacts (things an op created that teardown should surface) ----
     def add_op_artifact(self, op_id: int, kind: str, descr: str,
@@ -352,12 +355,9 @@ class Store:
 
     def op_artifacts(self, op_id: int | None = None) -> list[sqlite3.Row]:
         if op_id is None:
-            return self.db.execute(
-                "SELECT * FROM op_artifacts ORDER BY id"
-            ).fetchall()
-        return self.db.execute(
-            "SELECT * FROM op_artifacts WHERE op_id=? ORDER BY id", (int(op_id),)
-        ).fetchall()
+            return self._all("SELECT * FROM op_artifacts ORDER BY id")
+        return self._all(
+            "SELECT * FROM op_artifacts WHERE op_id=? ORDER BY id", (int(op_id),))
 
     def mark_artifact_reverted(self, aid: int, reverted: bool = True) -> None:
         with self._lock:
