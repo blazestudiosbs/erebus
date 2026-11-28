@@ -4,6 +4,14 @@ All notable changes to Erebus. Format based on [Keep a Changelog](https://keepac
 this project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
+### Fixed
+- **Dashboard "Set up engagement" and "Enumerate" buttons did nothing** (threw
+  `engSetup is not defined` / `subRun is not defined` in the browser console). The whole
+  dashboard script is one IIFE, so its functions aren't global, but these two buttons used
+  inline `onclick="fn()"` — which resolves against global scope — while every other button
+  wires via `.onclick` inside the IIFE. Wired both the same way and removed the inline
+  handlers; a test now asserts the page carries no inline `onclick`.
+
 ### Added
 - **HackerOne CSV scope import**: the scope parser now reads the CSV that HackerOne's
   "Export scopes" button produces, not just the JSON API shape or a plain list — so you can
